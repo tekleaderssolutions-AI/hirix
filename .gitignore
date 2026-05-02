@@ -26,3 +26,8 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Architecture Documentation
+architecture.html
+hirix_backend_architecture.md
+architecture_final.png
