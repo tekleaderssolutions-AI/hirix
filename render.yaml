@@ -1,0 +1,25 @@
+databases:
+  - name: hirix-db
+    databaseName: hirix
+    user: hirix_user
+    plan: free
+
+services:
+  - type: web
+    name: hirix-backend
+    env: python
+    plan: free
+    rootDir: hirix-backend
+    buildCommand: "pip install -r requirements.txt && python -m app.scripts.create_tables"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hirix-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        value: "replace-with-google-client-id" # You can update this in the Render Dashboard later
+      - key: ALLOWED_ORIGINS
+        value: '["http://localhost:3000", "http://localhost:5173"]' # Add your deployed frontend URL here later
