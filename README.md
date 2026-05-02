@@ -1,16 +1,31 @@
-# React + Vite
+# Hirix AI Recruitment Platform - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This repository contains the frontend application for the Hirix AI Recruitment Platform.
 
-Currently, two official plugins are available:
+## Technology Stack
+- **React 18**
+- **Vite**
+- **Zustand** (State Management)
+- **React Query** (Server State)
+- **Plain CSS** (Styling)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Key Features
+- Dual-mode job creation (Manual vs. Document Upload)
+- AI-driven candidate sourcing
+- Interactive job pipeline management
 
-## React Compiler
+## Development
+```bash
+npm install
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## Project Overview
+This is the main repository for the Hirix AI Recruitment Platform.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Branches
+- **main**: Project overview and configuration.
+- **backend**: FastAPI backend with 9-layer hexagonal architecture.
+- **frontend**: Frontend application.

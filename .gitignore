@@ -22,3 +22,22 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# Architecture Documentation
+architecture.html
+hirix_backend_architecture.md
+architecture_final.png
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
