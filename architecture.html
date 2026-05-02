@@ -1,0 +1,1905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Recruitment Platform — Full Low-Level Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --bg2: #0f1117;
+    --bg3: #141720;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e2e4ea;
+    --muted: #6b7280;
+    --dim: #3d4250;
+
+    /* Layer colors */
+    --l1: #7c5cbf;   /* purple - agentic */
+    --l2: #2e78c8;   /* blue - adapters */
+    --l3: #1a9e80;   /* teal - ports */
+    --l4: #2d9e4f;   /* green - application */
+    --l5: #c47d1a;   /* amber - domain core */
+    --l6: #c0483a;   /* coral - data/infra */
+    --l7: #8a8a8a;   /* gray - cross-cutting */
+    --l8: #b0487a;   /* pink - governance */
+    --l9: #b83535;   /* red - resilience */
+
+    --l1-bg: rgba(124,92,191,0.08);
+    --l2-bg: rgba(46,120,200,0.08);
+    --l3-bg: rgba(26,158,128,0.08);
+    --l4-bg: rgba(45,158,79,0.08);
+    --l5-bg: rgba(196,125,26,0.08);
+    --l6-bg: rgba(192,72,58,0.08);
+    --l7-bg: rgba(138,138,138,0.06);
+    --l8-bg: rgba(176,72,122,0.08);
+    --l9-bg: rgba(184,53,53,0.08);
+
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.5;
+    min-width: 1400px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border2);
+    padding: 24px 40px 20px;
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; gap: 32px;
+  }
+  .header-title { font-family: var(--display); font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .header-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); white-space: nowrap; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── MAIN CANVAS ── */
+  .canvas {
+    padding: 24px 40px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  /* ── LAYER ROW ── */
+  .layer {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .layer:hover { border-color: var(--border2); }
+
+  .layer-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .layer-num { font-family: var(--display); font-size: 9px; font-weight: 700; opacity: 0.6; }
+  .layer-name { font-family: var(--display); font-size: 12px; font-weight: 700; flex: 1; }
+  .layer-badge { font-size: 8px; padding: 2px 6px; border-radius: 3px; font-weight: 600; letter-spacing: 0.5px; }
+  .layer-toggle { font-size: 10px; color: var(--muted); transition: transform 0.2s; }
+  .layer.collapsed .layer-toggle { transform: rotate(-90deg); }
+  .layer.collapsed .layer-body { display: none; }
+
+  .layer-body {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+  }
+
+  /* ── SIDE PANEL ── */
+  .side-panel {
+    border-right: 1px solid var(--border);
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .side-section { }
+  .side-label { font-size: 8px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .side-item { font-size: 9px; color: #9ca3af; padding: 2px 0; border-left: 2px solid var(--dim); padding-left: 7px; margin-bottom: 3px; }
+  .side-item strong { color: var(--text); font-weight: 500; }
+
+  /* ── MAIN CONTENT ── */
+  .main-content {
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  /* ── COMPONENT GRID ── */
+  .comp-grid {
+    display: grid;
+    gap: 8px;
+  }
+  .comp-grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .comp-grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .comp-grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .comp-grid-5 { grid-template-columns: repeat(5, 1fr); }
+  .comp-grid-6 { grid-template-columns: repeat(6, 1fr); }
+  .comp-grid-7 { grid-template-columns: repeat(7, 1fr); }
+
+  /* ── COMPONENT CARD ── */
+  .comp {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 10px;
+    background: var(--bg3);
+  }
+  .comp-title { font-family: var(--display); font-size: 10px; font-weight: 600; margin-bottom: 5px; }
+  .comp-sub { font-size: 8px; color: var(--muted); margin-bottom: 6px; font-style: italic; }
+  .comp-item { font-size: 9px; color: #9ca3af; padding: 1px 0; }
+  .comp-item::before { content: '·'; margin-right: 4px; opacity: 0.4; }
+  .comp-tech { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border); font-size: 8px; color: var(--dim); }
+  .comp-tech span { color: #6b7280; }
+
+  /* ── FLOW ROW ── */
+  .flow-row {
+    display: flex; align-items: stretch; gap: 0;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .flow-step {
+    flex: 1; padding: 8px 10px;
+    border-right: 1px solid var(--border);
+    position: relative;
+  }
+  .flow-step:last-child { border-right: none; }
+  .flow-step::after {
+    content: '→';
+    position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+    font-size: 10px; color: var(--dim); z-index: 1;
+  }
+  .flow-step:last-child::after { display: none; }
+  .flow-num { font-size: 8px; font-weight: 700; opacity: 0.4; margin-bottom: 3px; }
+  .flow-title { font-size: 9px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .flow-desc { font-size: 8px; color: var(--muted); }
+
+  /* ── SECTION HEADER ── */
+  .sec-header {
+    font-size: 8px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--muted); padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+
+  /* ── SCHEMA BOX ── */
+  .schema {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 9px;
+    color: #6b9e6b;
+    line-height: 1.7;
+  }
+  .schema .k { color: #7db5d8; }
+  .schema .v { color: #ce9178; }
+  .schema .c { color: var(--dim); }
+
+  /* ── INLINE TAGS ── */
+  .tag {
+    display: inline-block; font-size: 8px; font-weight: 600;
+    padding: 1px 5px; border-radius: 3px; margin: 1px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── CONNECTION ARROWS ── */
+  .connections {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    margin-top: 4px;
+  }
+  .conn-item {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 4px; padding: 8px;
+  }
+  .conn-label { font-size: 8px; font-weight: 600; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px; }
+  .conn-entry { font-size: 8px; color: #9ca3af; padding: 1px 0; }
+  .conn-arrow { color: var(--muted); margin-right: 4px; }
+
+  /* ── DIVIDER ── */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  /* LAYER SPECIFIC COLORS */
+  .l1 .layer-header { background: var(--l1-bg); }
+  .l1 .layer-name { color: var(--l1); }
+  .l1 .layer-badge { background: rgba(124,92,191,0.15); color: var(--l1); }
+  .l1 .comp-title { color: var(--l1); }
+  .l1 .side-item { border-left-color: var(--l1); }
+
+  .l2 .layer-header { background: var(--l2-bg); }
+  .l2 .layer-name { color: var(--l2); }
+  .l2 .layer-badge { background: rgba(46,120,200,0.15); color: var(--l2); }
+  .l2 .comp-title { color: var(--l2); }
+  .l2 .side-item { border-left-color: var(--l2); }
+
+  .l3 .layer-header { background: var(--l3-bg); }
+  .l3 .layer-name { color: var(--l3); }
+  .l3 .layer-badge { background: rgba(26,158,128,0.15); color: var(--l3); }
+  .l3 .comp-title { color: var(--l3); }
+  .l3 .side-item { border-left-color: var(--l3); }
+
+  .l4 .layer-header { background: var(--l4-bg); }
+  .l4 .layer-name { color: var(--l4); }
+  .l4 .layer-badge { background: rgba(45,158,79,0.15); color: var(--l4); }
+  .l4 .comp-title { color: var(--l4); }
+  .l4 .side-item { border-left-color: var(--l4); }
+
+  .l5 .layer-header { background: var(--l5-bg); }
+  .l5 .layer-name { color: var(--l5); }
+  .l5 .layer-badge { background: rgba(196,125,26,0.15); color: var(--l5); }
+  .l5 .comp-title { color: var(--l5); }
+  .l5 .side-item { border-left-color: var(--l5); }
+
+  .l6 .layer-header { background: var(--l6-bg); }
+  .l6 .layer-name { color: var(--l6); }
+  .l6 .layer-badge { background: rgba(192,72,58,0.15); color: var(--l6); }
+  .l6 .comp-title { color: var(--l6); }
+  .l6 .side-item { border-left-color: var(--l6); }
+
+  .l7 .layer-header { background: var(--l7-bg); }
+  .l7 .layer-name { color: var(--l7); }
+  .l7 .layer-badge { background: rgba(138,138,138,0.12); color: var(--l7); }
+  .l7 .comp-title { color: var(--l7); }
+  .l7 .side-item { border-left-color: var(--l7); }
+
+  .l8 .layer-header { background: var(--l8-bg); }
+  .l8 .layer-name { color: var(--l8); }
+  .l8 .layer-badge { background: rgba(176,72,122,0.15); color: var(--l8); }
+  .l8 .comp-title { color: var(--l8); }
+  .l8 .side-item { border-left-color: var(--l8); }
+
+  .l9 .layer-header { background: var(--l9-bg); }
+  .l9 .layer-name { color: var(--l9); }
+  .l9 .layer-badge { background: rgba(184,53,53,0.15); color: var(--l9); }
+  .l9 .comp-title { color: var(--l9); }
+  .l9 .side-item { border-left-color: var(--l9); }
+
+  /* DATA FLOW DIAGRAM */
+  .dataflow {
+    display: flex; align-items: center; gap: 0;
+    overflow-x: auto; padding: 8px 0;
+  }
+  .df-node {
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 80px; padding: 6px 4px;
+  }
+  .df-box {
+    border-radius: 4px; padding: 5px 8px;
+    font-size: 8px; font-weight: 600; text-align: center;
+    white-space: nowrap;
+  }
+  .df-label { font-size: 7px; color: var(--muted); margin-top: 3px; text-align: center; }
+  .df-arrow { font-size: 14px; color: var(--dim); padding: 0 2px; flex-shrink: 0; align-self: center; }
+  .df-arrow-async { font-size: 11px; color: var(--dim); padding: 0 2px; flex-shrink: 0; align-self: center; }
+
+  /* INTERFACE DEFINITION */
+  .iface {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px;
+    font-size: 9px; line-height: 1.8;
+  }
+  .iface .method { color: #dcdcaa; }
+  .iface .param { color: #9cdcfe; }
+  .iface .type { color: #4ec9b0; }
+  .iface .ret { color: #ce9178; }
+  .iface .kw { color: #569cd6; }
+
+  /* CONTRACT BOX */
+  .contract {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .contract-col { }
+  .contract-label { font-size: 8px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  .contract-item { font-size: 9px; color: #9ca3af; padding: 1px 0; }
+
+  /* GRID 8-WIDE */
+  .comp-grid-8 { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+
+  /* SMALL COMP */
+  .comp-sm { padding: 7px; }
+  .comp-sm .comp-title { font-size: 9px; margin-bottom: 3px; }
+  .comp-sm .comp-item { font-size: 8px; }
+
+  /* FULL WIDTH EVENT LIST */
+  .event-list {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .event-tag {
+    font-size: 8px; padding: 2px 7px; border-radius: 3px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  /* PRINCIPLE LIST */
+  .principles { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
+  .principle { font-size: 8px; padding: 6px 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: #9ca3af; }
+  .principle::before { content: '✓'; color: #2d9e4f; margin-right: 5px; }
+
+  /* SCROLLTOP BTN */
+  #scrolltop {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--bg2); border: 1px solid var(--border2);
+    color: var(--muted); font-family: var(--mono); font-size: 10px;
+    padding: 6px 12px; border-radius: 4px; cursor: pointer;
+    transition: color 0.2s;
+  }
+  #scrolltop:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-title">AI Recruitment Platform — Full Low-Level Architecture</div>
+    <div class="header-sub">9-Layer Hexagonal + DDD + Event-Driven System · Click any layer header to collapse/expand</div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l1)"></div>L1 Agentic</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l2)"></div>L2 Adapters</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l3)"></div>L3 Ports</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l4)"></div>L4 Application</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l5)"></div>L5 Domain Core</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l6)"></div>L6 Data/Infra</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l7)"></div>L7 Cross-Cutting</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l8)"></div>L8 Governance</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--l9)"></div>L9 Resilience</div>
+  </div>
+</div>
+
+<!-- END-TO-END DATA FLOW -->
+<div style="padding: 16px 40px 0; background: var(--bg);">
+  <div class="sec-header">End-to-end request + event flow</div>
+  <div class="dataflow">
+    <div class="df-node"><div class="df-box" style="background:rgba(46,120,200,0.15);color:var(--l2);border:1px solid rgba(46,120,200,0.3)">User / UI / API</div><div class="df-label">External</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(46,120,200,0.15);color:var(--l2);border:1px solid rgba(46,120,200,0.3)">L2 Adapter<br>FastAPI/gRPC</div><div class="df-label">Transform</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(26,158,128,0.15);color:var(--l3);border:1px solid rgba(26,158,128,0.3)">L3 Port<br>Interface</div><div class="df-label">Contract</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(45,158,79,0.15);color:var(--l4);border:1px solid rgba(45,158,79,0.3)">L4 Application<br>Workflow</div><div class="df-label">Orchestrate</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(124,92,191,0.15);color:var(--l1);border:1px solid rgba(124,92,191,0.3)">L1 Agentic<br>Orchestrator</div><div class="df-label">AI Decide</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(196,125,26,0.15);color:var(--l5);border:1px solid rgba(196,125,26,0.3)">L5 Domain<br>Core Logic</div><div class="df-label">Business Rules</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(26,158,128,0.15);color:var(--l3);border:1px solid rgba(26,158,128,0.3)">L3 Port<br>Repo/EventBus</div><div class="df-label">Persist/Emit</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(46,120,200,0.15);color:var(--l2);border:1px solid rgba(46,120,200,0.3)">L2 Adapter<br>DB/Kafka/S3</div><div class="df-label">Execute</div></div>
+    <div class="df-arrow">→</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(192,72,58,0.15);color:var(--l6);border:1px solid rgba(192,72,58,0.3)">L6 Infra<br>PG/Redis/Pinecone</div><div class="df-label">Store</div></div>
+    <div class="df-arrow df-arrow-async">⇢</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(192,72,58,0.15);color:var(--l6);border:1px solid rgba(192,72,58,0.3)">Kafka Event<br>Bus</div><div class="df-label">Async Emit</div></div>
+    <div class="df-arrow df-arrow-async">⇢</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(45,158,79,0.15);color:var(--l4);border:1px solid rgba(45,158,79,0.3)">L4 Workers<br>Consumers</div><div class="df-label">Process</div></div>
+    <div class="df-arrow df-arrow-async">⇢</div>
+    <div class="df-node"><div class="df-box" style="background:rgba(124,92,191,0.15);color:var(--l1);border:1px solid rgba(124,92,191,0.3)">L1 Agents<br>Notify</div><div class="df-label">Respond</div></div>
+  </div>
+  <div style="display:flex;gap:16px;padding-top:6px;padding-bottom:14px;">
+    <div style="font-size:8px;color:var(--muted)">→ Sync request flow &nbsp;&nbsp; ⇢ Async event flow &nbsp;&nbsp; All cross-cutting (L7/L8/L9) applies at every node</div>
+  </div>
+</div>
+
+<div class="canvas">
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 1: AGENTIC CONTROL -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l1" id="l1">
+  <div class="layer-header" onclick="toggleLayer('l1')">
+    <span class="layer-num">LAYER 1</span>
+    <span class="layer-name">AGENTIC CONTROL LAYER</span>
+    <span class="layer-badge">LangGraph · Plan→Act→Observe→Reflect</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Orchestrates agents · Makes decisions · Emits structured outputs</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Inputs (Async/Sync)</div>
+        <div class="side-item"><strong>Kafka/EventBus</strong><br>Topic: application.requests</div>
+        <div class="side-item"><strong>REST / gRPC</strong><br>Optional sync trigger</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Input Contract v1.0</div>
+        <div class="side-item">Schema: layer1.output.v1.json</div>
+        <div class="side-item">Transport: Kafka / REST</div>
+        <div class="side-item">Format: JSON</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Example Input Event</div>
+        <div class="schema">
+<span class="c">// SCREENING_REQUIRED</span>
+<span class="k">event_type</span>: <span class="v">"SCREENING_REQUIRED"</span>
+<span class="k">event_id</span>: <span class="v">"evt_01N68..."</span>
+<span class="k">candidate_id</span>: <span class="v">"cand_123"</span>
+<span class="k">job_id</span>: <span class="v">"job_456"</span>
+<span class="k">resume_id</span>: <span class="v">"res_789"</span>
+<span class="k">source</span>: <span class="v">"careers_portal"</span>
+<span class="k">priority</span>: <span class="v">"normal"</span>
+        </div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Outputs (Async/Sync)</div>
+        <div class="side-item"><strong>Kafka</strong> → application.results</div>
+        <div class="side-item"><strong>REST/gRPC</strong> → L4 direct</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Example Output Event</div>
+        <div class="schema">
+<span class="k">event_type</span>: <span class="v">"SCREENING_COMPLETED"</span>
+<span class="k">candidate_id</span>: <span class="v">"cand_123"</span>
+<span class="k">decision</span>: <span class="v">"SHORTLISTED"</span>
+<span class="k">score</span>: <span class="v">84</span>
+<span class="k">confidence</span>: <span class="v">0.91</span>
+<span class="k">human_review</span>: <span class="v">false</span>
+<span class="k">decision_source</span>: <span class="v">"AI-RULES"</span>
+        </div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">1.1 Core Components</div>
+      <div class="comp-grid comp-grid-6">
+        <div class="comp">
+          <div class="comp-title">A. Agent Orchestrator</div>
+          <div class="comp-sub">LangGraph · Stateful</div>
+          <div class="comp-item">Builds & executes workflow graph</div>
+          <div class="comp-item">Schedules agent tasks</div>
+          <div class="comp-item">Manages execution context</div>
+          <div class="comp-item">Handles retries & timeouts</div>
+          <div class="comp-item">Maintains state in Redis</div>
+          <div class="comp-tech"><span>Stack:</span> LangGraph, Python, FastAPI, Redis</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">B. Agents (Stateless)</div>
+          <div class="comp-sub">Specialized workers</div>
+          <div class="comp-item">Screening Agent — evaluate candidate</div>
+          <div class="comp-item">Recruiter Copilot — assist recruiters</div>
+          <div class="comp-item">Interview Agent — analyze interviews</div>
+          <div class="comp-item">Other Specialized (as required)</div>
+          <div class="comp-tech"><span>Stack:</span> OpenAI/Claude, Prompt Templates, Pydantic</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">C. Decision Engine</div>
+          <div class="comp-sub">Arbitration & Scoring</div>
+          <div class="comp-item">Aggregates agent outputs</div>
+          <div class="comp-item">Applies business rules</div>
+          <div class="comp-item">Resolves conflicts</div>
+          <div class="comp-item">Calculates final score</div>
+          <div class="comp-item">Determines next action</div>
+          <div class="comp-item">Confidence aggregation</div>
+          <div class="comp-tech"><span>Stack:</span> Python, Rules Engine, Custom/Drools</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">D. Agent Task Queue</div>
+          <div class="comp-sub">Async Execution</div>
+          <div class="comp-item">Queue agent tasks</div>
+          <div class="comp-item">Ensure reliability</div>
+          <div class="comp-item">Decouple execution</div>
+          <div class="comp-item">Support retries & DLQ</div>
+          <div class="comp-tech"><span>Stack:</span> Redis / Kafka / RabbitMQ</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">E. Reasoning Trace</div>
+          <div class="comp-sub">Observability</div>
+          <div class="comp-item">Capture reasoning steps</div>
+          <div class="comp-item">Metrics & traces</div>
+          <div class="comp-item">Debug & audit support</div>
+          <div class="comp-item">Correlation IDs</div>
+          <div class="comp-tech"><span>Stack:</span> OpenTelemetry, ELK / Grafana</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">F. Human-in-the-Loop</div>
+          <div class="comp-sub">Approval System</div>
+          <div class="comp-item">Trigger human review</div>
+          <div class="comp-item">SLA timers & reminders</div>
+          <div class="comp-item">Escalation rules</div>
+          <div class="comp-item">Auto-resolution policies</div>
+          <div class="comp-item">Notifications</div>
+          <div class="comp-tech"><span>Stack:</span> FastAPI/UI, SendGrid / Slack</div>
+        </div>
+      </div>
+
+      <div class="sec-header">1.2 Memory (3-Tier)</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp">
+          <div class="comp-title">Session Memory (Short-term)</div>
+          <div class="comp-item">Conversation context</div>
+          <div class="comp-item">Short-lived state · TTL based</div>
+          <div class="comp-tech"><span>Tech:</span> Redis · TTL keys</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Semantic Memory (Long-term)</div>
+          <div class="comp-item">Candidate embeddings</div>
+          <div class="comp-item">Semantic search · Context retrieval</div>
+          <div class="comp-tech"><span>Tech:</span> Pinecone (Vector DB)</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Canonical State (Source of Truth)</div>
+          <div class="comp-item">Candidates, Jobs, Applications</div>
+          <div class="comp-item">Workflow state · Audit logs</div>
+          <div class="comp-tech"><span>Tech:</span> PostgreSQL</div>
+        </div>
+      </div>
+
+      <div class="sec-header">1.3 Internal Flow — Screening Example (9 steps)</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">Receive Event</div><div class="flow-desc">Orchestrator receives SCREENING_REQUIRED</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">Load Context</div><div class="flow-desc">Fetch candidate, job, resume, embeddings via Ports</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">Plan & Schedule</div><div class="flow-desc">Build execution plan (LangGraph), schedule agent tasks</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">Execute Agents</div><div class="flow-desc">Invoke agents (parallel where possible) with retries & timeouts</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Collect Outputs</div><div class="flow-desc">Agents return structured JSON (score, reasoning, confidence)</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">Decision Engine</div><div class="flow-desc">Aggregate, apply rules, resolve conflicts, calculate final score</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">Human Review?</div><div class="flow-desc">If required, send to approval queue and wait</div></div>
+        <div class="flow-step"><div class="flow-num">8</div><div class="flow-title">Final Decision</div><div class="flow-desc">Decision object created with audit metadata</div></div>
+        <div class="flow-step"><div class="flow-num">9</div><div class="flow-title">Emit Event</div><div class="flow-desc">Emit SCREENING_COMPLETED to Application Layer</div></div>
+      </div>
+
+      <div class="sec-header">1.4 Execution Model & Key Principles</div>
+      <div class="comp-grid comp-grid-4">
+        <div class="comp">
+          <div class="comp-title">Orchestrator = Stateful</div>
+          <div class="comp-item">Holds workflow context & execution state</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Agents = Stateless</div>
+          <div class="comp-item">Do not persist state between calls</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Communication</div>
+          <div class="comp-item">Async (Events) · Optional Sync (API)</div>
+          <div class="comp-item">Independent agents run in parallel where possible</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Reliability</div>
+          <div class="comp-item">Retries (exponential backoff)</div>
+          <div class="comp-item">Timeouts · DLQ</div>
+        </div>
+      </div>
+      <div class="principles">
+        <div class="principle">Layer 1 never accesses databases or external systems directly</div>
+        <div class="principle">All external interactions go through Ports → Adapters</div>
+        <div class="principle">All inputs/outputs are structured events with versioned schemas</div>
+        <div class="principle">Every decision is auditable & traceable</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 2: ADAPTERS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l2" id="l2">
+  <div class="layer-header" onclick="toggleLayer('l2')">
+    <span class="layer-num">LAYER 2</span>
+    <span class="layer-name">ADAPTERS LAYER</span>
+    <span class="layer-badge">Implements Ports · Handles Retries, Resilience, Security, Data Transformation</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Concrete implementations · Provider abstraction · Observability by default</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Call Path</div>
+        <div class="side-item">L1 Agents/Orchestrator</div>
+        <div class="side-item">→ L3 Ports (Interface)</div>
+        <div class="side-item">→ L2 Adapters (Implementation)</div>
+        <div class="side-item">→ External Systems</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Served Ports</div>
+        <div class="side-item"><strong>LLMPort</strong> → LLM Adapters</div>
+        <div class="side-item"><strong>StoragePort</strong> → Storage Adapters</div>
+        <div class="side-item"><strong>VectorPort</strong> → Vector DB Adapters</div>
+        <div class="side-item"><strong>EventBusPort</strong> → Messaging Adapters</div>
+        <div class="side-item"><strong>AgentPort</strong> → Agent Service Adapters</div>
+        <div class="side-item"><strong>SecretsPort</strong> → Secrets Adapters</div>
+        <div class="side-item"><strong>FilePort</strong> → File/Blob Adapters</div>
+        <div class="side-item"><strong>TelemetryPort</strong> → Telemetry Adapters</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Ownership</div>
+        <div class="side-item">Owns technical integration logic</div>
+        <div class="side-item">Owns retries, resilience, caching, security</div>
+        <div class="side-item">Does NOT own business logic</div>
+        <div class="side-item">Does NOT own workflow or decisions</div>
+        <div class="side-item">Fail fast, fail safe (L6 owns data)</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">2.2 Adapter Implementations (By Port)</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp">
+          <div class="comp-title">2.2.1 LLM Adapters (LLMPort)</div>
+          <div class="comp-item">OpenAI Adapter · Anthropic Adapter</div>
+          <div class="comp-item">Azure OpenAI Adapter · Google Gemini</div>
+          <div class="comp-item">Cohere Adapter · Custom LLM Adapter</div>
+          <div class="comp-item"><strong>Capabilities:</strong> Chat/Completions, Embeddings, Function Calling, Streaming, Usage Tracking, Prompt/Response Logging</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">2.2.2 Storage Adapters (StoragePort)</div>
+          <div class="comp-item">PostgreSQL · MySQL · MongoDB Adapter</div>
+          <div class="comp-item">DynamoDB · Redis (Key/Value) · S3/MinIO</div>
+          <div class="comp-item"><strong>Capabilities:</strong> CRUD Ops, Transactions, Connection Pooling, Pagination & Filtering, Bulk Ops, Query Optimization</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">2.2.3 Vector DB Adapters (VectorPort)</div>
+          <div class="comp-item">Pinecone · Weaviate · Qdrant · Milvus · OpenSearch</div>
+          <div class="comp-item"><strong>Capabilities:</strong> Embedding Upsert/Query, Similarity Search (kNN), Metadata Filtering, Hybrid Search, Namespace Mgmt, Batch Ops</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">2.2.4 Messaging Adapters (EventBusPort)</div>
+          <div class="comp-item">Kafka · RabbitMQ · AWS SQS · Azure Service Bus · NATS</div>
+          <div class="comp-item"><strong>Capabilities:</strong> Publish/Subscribe, Consumer Groups, Offset Mgmt, DLQ Handling, Schema Registry Integration, Exactly-Once (Idempotent)</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">2.2.5 Agent Service Adapters (AgentPort)</div>
+          <div class="comp-item">Internal Agent Service · External Microservice · HTTP Agent · gRPC Agent · Function-as-a-Service</div>
+          <div class="comp-item"><strong>Capabilities:</strong> Invoke Agent, Timeout & Cancellation, Circuit Breaker, Response Validation, Idempotency Key Support</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">2.2.6 Auxiliary Adapters</div>
+          <div class="comp-item"><strong>Secrets:</strong> HashiCorp Vault, AWS Secrets Manager, Azure Key Vault</div>
+          <div class="comp-item"><strong>File/Blob:</strong> S3 Adapter, GCS Adapter, Azure Blob</div>
+          <div class="comp-item"><strong>Telemetry:</strong> OpenTelemetry, Prometheus, Datadog</div>
+        </div>
+      </div>
+
+      <div class="sec-header">2.3 Cross-Cutting Infrastructure (All Adapters)</div>
+      <div class="comp-grid comp-grid-5">
+        <div class="comp comp-sm">
+          <div class="comp-title">Resilience</div>
+          <div class="comp-item">Retry (Exponential Backoff)</div>
+          <div class="comp-item">Circuit Breaker · Timeout</div>
+          <div class="comp-item">Bulkhead Isolation</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Rate Limiting</div>
+          <div class="comp-item">Token/Request Rate Limiting</div>
+          <div class="comp-item">Adaptive Throttling</div>
+          <div class="comp-item">Per-tenant Quotas</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Caching</div>
+          <div class="comp-item">Response Caching</div>
+          <div class="comp-item">Contextual Caching</div>
+          <div class="comp-item">Configurable TTL</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Security</div>
+          <div class="comp-item">AuthN / AuthZ · OAuth2/API Keys</div>
+          <div class="comp-item">Encryption In Transit</div>
+          <div class="comp-item">PII Masking / Redaction</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Observability</div>
+          <div class="comp-item">Structured Logging</div>
+          <div class="comp-item">Metrics (RED / USE)</div>
+          <div class="comp-item">Distributed Tracing · Correlation ID</div>
+        </div>
+      </div>
+
+      <div class="sec-header">2.4 Adapter Execution Flow (Every Call)</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">Receive Call</div><div class="flow-desc">From Ports Layer (L3) · Validate input against port contract & auth context</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">Pre-Process</div><div class="flow-desc">Transform / Enrich · Map to provider format · Add headers / auth</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">Resilience Guard</div><div class="flow-desc">Rate limit check · Circuit breaker check · Timeout budget check</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">Execute Call</div><div class="flow-desc">Call external system via provider SDK / API</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Post-Process</div><div class="flow-desc">Map response to port contract · Validate & sanitize</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">Record & Emit</div><div class="flow-desc">Update usage & cost · Emit events (if any)</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">Return Response</div><div class="flow-desc">Return standardized response / error to Ports Layer</div></div>
+      </div>
+      <div style="font-size:8px;color:var(--l9);padding:4px 0">On Failure → Retry with backoff → If retries exhausted → Circuit open → Fallback/Failover (if configured) → Return standardized error</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 3: PORTS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l3" id="l3">
+  <div class="layer-header" onclick="toggleLayer('l3')">
+    <span class="layer-num">LAYER 3</span>
+    <span class="layer-name">PORTS LAYER (Interface Layer)</span>
+    <span class="layer-badge">Defines the Contract (What) · Technology-Agnostic · Stable · Versioned</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">L1 depends on Ports · L2 implements Ports · L3 has no dependency on any other layer</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Primary Consumer</div>
+        <div class="side-item"><strong>Orchestrator</strong> — LLMPort, VectorPort</div>
+        <div class="side-item"><strong>Agents</strong> — LLMPort, StoragePort</div>
+        <div class="side-item"><strong>Decision Engine</strong> — StoragePort, EventBusPort</div>
+        <div class="side-item"><strong>Memory Manager</strong> — VectorPort, StoragePort</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Example Call (L1 → Port)</div>
+        <div class="iface">
+<span class="c">// Layer 1 code</span>
+<span class="kw">val</span> result = llmPort
+  .<span class="method">generateCompletion</span>(
+    <span class="param">prompt</span>: <span class="type">String</span>,
+    <span class="param">model</span>: <span class="type">String</span>,
+    <span class="param">options</span>: <span class="type">LLMOptions</span>
+  )
+<span class="c">// LLMPort is an interface here</span>
+        </div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Contract Source</div>
+        <div class="side-item">All contracts defined in Layer 3 (Interface/Abstraction)</div>
+        <div class="side-item">Includes: I/O Schemas, Exceptions, Behavior Rules, Versioning</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Belongs / Does NOT Belong</div>
+        <div class="side-item">✓ Interfaces / Abstractions</div>
+        <div class="side-item">✓ Request/Response Schemas</div>
+        <div class="side-item">✓ Exception Definitions</div>
+        <div class="side-item">✓ Behavior Rules · Versioning Info</div>
+        <div class="side-item">✗ Business Logic · Database Queries</div>
+        <div class="side-item">✗ HTTP Clients · SDK Calls · Retry Logic</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">3.2 Ports Catalog</div>
+      <div class="comp-grid comp-grid-4">
+        <div class="comp">
+          <div class="comp-title">3.2.1 LLM Port (LLMPort)</div>
+          <div class="comp-item"><strong>Methods:</strong> generateCompletion(), generateEmbedding(), chatCompletion(), rerank(), moderate()</div>
+          <div class="comp-item"><strong>Input:</strong> LLMRequest (model, messages, temp, maxTokens)</div>
+          <div class="comp-item"><strong>Output:</strong> LLMResponse (text, usage, finishReason)</div>
+          <div class="comp-item"><strong>Exceptions:</strong> LLMRateLimitEx, LLMServiceEx, LLMTimeoutEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.2 Storage Port (StoragePort)</div>
+          <div class="comp-item"><strong>Methods:</strong> getById(), find(), create(), update(), delete(), count()</div>
+          <div class="comp-item"><strong>Input:</strong> StorageQuery · <strong>Output:</strong> StorageResult</div>
+          <div class="comp-item"><strong>Exceptions:</strong> StorageNotFoundException, StorageConflictEx, StorageUnavailableEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.3 Vector Port (VectorPort)</div>
+          <div class="comp-item"><strong>Methods:</strong> searchSimilar(), upsert(), deleteById(), getById()</div>
+          <div class="comp-item"><strong>Input:</strong> VectorQuery · <strong>Output:</strong> VectorResult</div>
+          <div class="comp-item"><strong>Exceptions:</strong> VectorNotFoundException, VectorServiceEx, VectorTimeoutEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.4 Event Bus Port (EventBusPort)</div>
+          <div class="comp-item"><strong>Methods:</strong> publish(), subscribe(), acknowledge()</div>
+          <div class="comp-item"><strong>Input:</strong> EventEnvelope · <strong>Output:</strong> AckResult</div>
+          <div class="comp-item"><strong>Exceptions:</strong> EventPublishEx, EventConsumeEx, EventSerializationEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.5 Agent Port (AgentPort)</div>
+          <div class="comp-item"><strong>Methods:</strong> invokeAgent(), InvokeWorkflow()</div>
+          <div class="comp-item"><strong>Input:</strong> AgentRequest · <strong>Output:</strong> AgentResponse</div>
+          <div class="comp-item"><strong>Exceptions:</strong> AgentInvocationEx, AgentTimeoutEx, AgentUnavailableEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.6 Secrets Port (SecretsPort)</div>
+          <div class="comp-item"><strong>Methods:</strong> getSecret(), getSecrets(), rotateSecret()</div>
+          <div class="comp-item"><strong>Input:</strong> SecretRequest · <strong>Output:</strong> SecretResult</div>
+          <div class="comp-item"><strong>Exceptions:</strong> SecretNotFoundException, SecretAccessEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.7 File Port (FilePort)</div>
+          <div class="comp-item"><strong>Methods:</strong> upload(), download(), delete(), signedUrl()</div>
+          <div class="comp-item"><strong>Input:</strong> FileRequest · <strong>Output:</strong> FileResult</div>
+          <div class="comp-item"><strong>Exceptions:</strong> FileNotFoundException, FileUploadEx, FileAccessEx</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">3.2.8 Telemetry Port (TelemetryPort)</div>
+          <div class="comp-item"><strong>Methods:</strong> log(), metric(), trace(), event()</div>
+          <div class="comp-item"><strong>Input:</strong> TelemetryData · <strong>Output:</strong> AckResult</div>
+          <div class="comp-item"><strong>Exceptions:</strong> TelemetryEx, TelemetryUnavailableEx</div>
+        </div>
+      </div>
+
+      <div class="sec-header">3.3 Contract & Behavior Rules</div>
+      <div class="comp-grid comp-grid-5">
+        <div class="comp comp-sm">
+          <div class="comp-title">Contract Principles</div>
+          <div class="comp-item">Stable and versioned</div>
+          <div class="comp-item">Explicit input/output schemas</div>
+          <div class="comp-item">No business logic</div>
+          <div class="comp-item">One responsibility per port</div>
+          <div class="comp-item">Backward compatible evolution</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Versioning Strategy</div>
+          <div class="comp-item">Semantic versioning (MAJOR.MINOR.PATCH)</div>
+          <div class="comp-item">Non-breaking: MINOR / PATCH</div>
+          <div class="comp-item">Breaking: MAJOR</div>
+          <div class="comp-item">All consumers declare version range</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Error Handling</div>
+          <div class="comp-item">All ports throw typed exceptions</div>
+          <div class="comp-item">No generic exceptions</div>
+          <div class="comp-item">Retryable vs Non-retryable defined</div>
+          <div class="comp-item">Timeouts must be configurable</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Timeout & Resilience</div>
+          <div class="comp-item">Timeout is part of contract</div>
+          <div class="comp-item">Caller decides retry policy</div>
+          <div class="comp-item">Circuit breaker at adapter level</div>
+          <div class="comp-item">Not in ports</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Data Rules</div>
+          <div class="comp-item">All requests/responses JSON (or Protobuf)</div>
+          <div class="comp-item">PII must be encrypted in transport</div>
+          <div class="comp-item">No sensitive data in logs</div>
+        </div>
+      </div>
+
+      <div class="sec-header">3.5 Cross-Layer Interaction Flow</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">L4 → L1</div><div class="flow-desc">Application sends SCREENING_REQUIRED event via Kafka</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">L1 Uses Ports</div><div class="flow-desc">Orchestrator/Agents call ports (interfaces defined in L3)</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">L2 Implements</div><div class="flow-desc">Adapters implement the ports and execute logic</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">L6 Accessed</div><div class="flow-desc">Adapters call external systems (DB, APIs, etc.)</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Response Flows Back</div><div class="flow-desc">Adapter → Port → Layer 1 (Agentic)</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">L1 Emits Result</div><div class="flow-desc">Emit SCREENING_COMPLETED event via EventBusPort</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">L4 Consumes</div><div class="flow-desc">Application layer consumes result event</div></div>
+      </div>
+      <div style="font-size:8px;color:var(--l3);padding:4px 0">Dependency Rule: L1 depends on L3 (Ports). L2 depends on L3. L3 has NO dependency on any other layer.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 4: APPLICATION -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l4" id="l4">
+  <div class="layer-header" onclick="toggleLayer('l4')">
+    <span class="layer-num">LAYER 4</span>
+    <span class="layer-name">APPLICATION LAYER</span>
+    <span class="layer-badge">Orchestrates Business Workflows · Owns State · Consumes Agentic Services · Emits Events</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Stateless services where possible · State in DB · Idempotent · Observable</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Events Consumed (from L1)</div>
+        <div class="side-item">SCREENING_COMPLETED</div>
+        <div class="side-item">SCREENING_FAILED</div>
+        <div class="side-item">HUMAN_REVIEW_REQUESTED</div>
+        <div class="side-item">AGENT_HEARTBEAT</div>
+        <div class="side-item">AGENT_ERROR</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Events Published (to L1)</div>
+        <div class="side-item">SCREENING_REQUIRED</div>
+        <div class="side-item">INTERVIEW_ANALYSIS_REQUIRED</div>
+        <div class="side-item">REASONING_TRACE_REQUEST</div>
+        <div class="side-item">FEEDBACK_REQUESTED</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Ports Used (via L3)</div>
+        <div class="side-item">EventBusPort (publish/subscribe)</div>
+        <div class="side-item">StoragePort (read/write domain data)</div>
+        <div class="side-item">NotificationPort (send notifications)</div>
+        <div class="side-item">ConfigPort (read configuration)</div>
+        <div class="side-item">ExternalServicePort (call external)</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Ownership</div>
+        <div class="side-item">✓ Business Workflows & Orchestration</div>
+        <div class="side-item">✓ Domain State & Persistence</div>
+        <div class="side-item">✓ Business Rules & Policies</div>
+        <div class="side-item">✓ User Interactions & APIs</div>
+        <div class="side-item">✗ Agentic Logic (L1)</div>
+        <div class="side-item">✗ Ports / Contracts (L3)</div>
+        <div class="side-item">✗ Implementations (L2)</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">4.2 Key Components</div>
+      <div class="comp-grid comp-grid-4">
+        <div class="comp">
+          <div class="comp-title">4.2.1 Workflow Orchestrator</div>
+          <div class="comp-sub">State Machines / Saga</div>
+          <div class="comp-item">Screening Workflow</div>
+          <div class="comp-item">Interview Workflow · Offer Workflow</div>
+          <div class="comp-item">Feedback Workflow · Exception Handling</div>
+          <div class="comp-item">Compensation / Rollback</div>
+          <div class="comp-tech"><span>Tech:</span> Temporal / Camunda / AWS Step Functions</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2.2 Domain Services</div>
+          <div class="comp-sub">Business Logic</div>
+          <div class="comp-item">Candidate Service · Job Service</div>
+          <div class="comp-item">Application Service · Interview Service</div>
+          <div class="comp-item">Decision Service · Notification Service</div>
+          <div class="comp-tech"><span>Tech:</span> Spring Boot / NestJS / .NET</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2.3 State Management</div>
+          <div class="comp-sub">Source of Truth</div>
+          <div class="comp-item">Workflow State · Candidate State</div>
+          <div class="comp-item">Decision State · Audit State</div>
+          <div class="comp-item">Feedback State · Reference Data</div>
+          <div class="comp-tech"><span>Tech:</span> PostgreSQL / Aurora / MySQL</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2.4 Event Manager</div>
+          <div class="comp-sub">Producer / Consumer</div>
+          <div class="comp-item">Event Publisher · Event Consumer</div>
+          <div class="comp-item">Dead Letter Queue · Event Schema Registry</div>
+          <div class="comp-item">Idempotency Handler · Event Routing</div>
+          <div class="comp-tech"><span>Tech:</span> Kafka / Schema Registry (Confluent)</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2.5 Policy & Rule Engine</div>
+          <div class="comp-sub">Business Rules</div>
+          <div class="comp-item">Eligibility Rules · Scoring Rules</div>
+          <div class="comp-item">Approval Rules · Escalation Rules</div>
+          <div class="comp-item">SLA Rules · Compliance Rules</div>
+          <div class="comp-tech"><span>Tech:</span> Drools / Custom Rule Engine</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2.6 API Gateway</div>
+          <div class="comp-sub">External Interface</div>
+          <div class="comp-item">REST / GraphQL APIs · Authentication</div>
+          <div class="comp-item">Rate Limiting · API Versioning</div>
+          <div class="comp-item">Request Validation · Response Standardization</div>
+          <div class="comp-tech"><span>Tech:</span> Kong / Spring Cloud Gateway</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2.7 Notification Service</div>
+          <div class="comp-sub">Communication</div>
+          <div class="comp-item">Email Service · SMS Service</div>
+          <div class="comp-item">In-App Notifications · Webhook Service</div>
+          <div class="comp-item">Template Engine · Delivery Tracking</div>
+          <div class="comp-tech"><span>Tech:</span> SendGrid / Twilio / SES</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">4.2 Data & State Mgmt</div>
+          <div class="comp-sub">Caching (Redis)</div>
+          <div class="comp-item">Reference Data Cache · User Session Cache</div>
+          <div class="comp-item">Workflow Cache · Config Cache</div>
+          <div class="comp-item">Scoring Weights Cache</div>
+          <div class="comp-tech"><span>Tech:</span> Redis Cluster</div>
+        </div>
+      </div>
+
+      <div class="sec-header">4.3 End-to-End Business Workflow — Screening Flow</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">Receive Trigger</div><div class="flow-desc">Job created or Application received</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">Validate & Enrich</div><div class="flow-desc">Validate input, enrich candidate & job information</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">Emit to L1</div><div class="flow-desc">Publish SCREENING_REQUIRED to Kafka</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">Await Result</div><div class="flow-desc">Listen for SCREENING_COMPLETED or FAILED</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Process Result</div><div class="flow-desc">Persist results, update state, calculate score, apply rules</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">Business Decision</div><div class="flow-desc">Apply business rules, decide next action (Shortlist/Reject/Review)</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">Human Review?</div><div class="flow-desc">Route to reviewer, track SLA, collect decision</div></div>
+        <div class="flow-step"><div class="flow-num">8</div><div class="flow-title">Finalize</div><div class="flow-desc">Finalize decision, update state, trigger notifications</div></div>
+        <div class="flow-step"><div class="flow-num">9</div><div class="flow-title">Emit Outcome</div><div class="flow-desc">Publish final outcome SCREENING_OUTCOME event</div></div>
+      </div>
+
+      <div class="sec-header">4.4 Event Contracts</div>
+      <div class="comp-grid comp-grid-2">
+        <div>
+          <div class="side-label" style="margin-bottom:6px">Events Published by L4 (to L1 / Other Systems)</div>
+          <div class="event-list">
+            <div class="event-tag">SCREENING_REQUIRED</div>
+            <div class="event-tag">INTERVIEW_SCHEDULED</div>
+            <div class="event-tag">HUMAN_REVIEW_REQUIRED</div>
+            <div class="event-tag">DECISION_FEEDBACK</div>
+            <div class="event-tag">HIRING_DECISION_MADE</div>
+          </div>
+        </div>
+        <div>
+          <div class="side-label" style="margin-bottom:6px">Events Consumed by L4 (from L1 / Other Systems)</div>
+          <div class="event-list">
+            <div class="event-tag">SCREENING_COMPLETED</div>
+            <div class="event-tag">SCREENING_FAILED</div>
+            <div class="event-tag">HUMAN_REVIEW_COMPLETED</div>
+            <div class="event-tag">AGENT_HEARTBEAT</div>
+            <div class="event-tag">AGENT_ERROR</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 5: DOMAIN CORE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l5" id="l5">
+  <div class="layer-header" onclick="toggleLayer('l5')">
+    <span class="layer-num">LAYER 5</span>
+    <span class="layer-name">DOMAIN CORE (Business Domain Layer)</span>
+    <span class="layer-badge">Pure Business Logic · No Frameworks · No Infrastructure · DDD Aggregates</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Heart of the system — encodes what the system does, rules that govern it, value it delivers</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Receives From</div>
+        <div class="side-item">L4: Use Cases, Commands & Queries</div>
+        <div class="side-item">L1: Candidate Context, Job Context, Screening Decisions, Interviewer Feedback, Memory & Insights</div>
+        <div class="side-item">L7/8: Governance & Policy Rules</div>
+        <div class="side-item">L9: Recovery & Retry Actions</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Provides To</div>
+        <div class="side-item">L4: Entities, Value Objects, Domain Services, Domain Events, Repositories (Ports), Business Rules & Policies</div>
+        <div class="side-item">L1: Rich domain context (Candidate, Job, Decision)</div>
+        <div class="side-item">L6: Persists via Repositories (Ports)</div>
+        <div class="side-item">L7/8: Domain data for governance</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Non-Functional</div>
+        <div class="side-item">Ubiquitous Language (Consistency)</div>
+        <div class="side-item">Encapsulation (Hide Complexity)</div>
+        <div class="side-item">Consistency (Strong Invariants)</div>
+        <div class="side-item">Loose Coupling (IDs, Events)</div>
+        <div class="side-item">High Cohesion (Per Aggregate)</div>
+        <div class="side-item">Testability (Business Logic)</div>
+        <div class="side-item">Independence from Infrastructure</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">5.1 Core Domain Entities (Aggregate Roots)</div>
+      <div class="comp-grid comp-grid-4">
+        <div class="comp">
+          <div class="comp-title">Candidate (AR)</div>
+          <div class="comp-item">id, name, email, phone, location</div>
+          <div class="comp-item">skills, experience, education</div>
+          <div class="comp-item">resumeUrl, status, createdAt</div>
+          <div class="comp-item"><strong>Invariant:</strong> Email must be unique</div>
+          <div class="comp-item"><strong>VO children:</strong> Skills, Experience, Education</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Job (AR)</div>
+          <div class="comp-item">id, title, description, department</div>
+          <div class="comp-item">location, employmentType, experienceLevel</div>
+          <div class="comp-item">requirements, createdAt, status</div>
+          <div class="comp-item"><strong>Invariant:</strong> Job title unique per org</div>
+          <div class="comp-item"><strong>VO children:</strong> Requirements, Skills, ExperienceLevel, Locations</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Application (AR)</div>
+          <div class="comp-item">id, candidateId, jobId, appliedAt</div>
+          <div class="comp-item">currentStage, status, source</div>
+          <div class="comp-item">resumeSnapshot, metadata</div>
+          <div class="comp-item"><strong>Invariant:</strong> Candidate can apply only once per job</div>
+          <div class="comp-item"><strong>VO children:</strong> Status History, Source, Metadata</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Interview (AR)</div>
+          <div class="comp-item">id, applicationId, type, status</div>
+          <div class="comp-item">scheduledAt, duration, meetingUrl</div>
+          <div class="comp-item">interviewerIds, score, feedbackStatus</div>
+          <div class="comp-item"><strong>Invariant:</strong> Interview must belong to a valid application</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Evaluation (AR)</div>
+          <div class="comp-item">id, interviewId, evaluatorId</div>
+          <div class="comp-item">overallScore, competencies, comments</div>
+          <div class="comp-item">recommendation, decidedBy</div>
+          <div class="comp-item"><strong>Invariant:</strong> Score must be within defined scale</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Decision (AR)</div>
+          <div class="comp-item">id, applicationId, decisionType</div>
+          <div class="comp-item">decisionStage, decidedBy, notes</div>
+          <div class="comp-item">offerDetails</div>
+          <div class="comp-item"><strong>Invariant:</strong> Decision valid for current stage only</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">User / Employee (AR)</div>
+          <div class="comp-item">id, name, email, role, department</div>
+          <div class="comp-item">permissions, employerId</div>
+          <div class="comp-item"><strong>Invariant:</strong> Role must be valid in the system</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Organization (AR)</div>
+          <div class="comp-item">id, name, type, industry, size</div>
+          <div class="comp-item">address, settings, billingInfo, status</div>
+          <div class="comp-item"><strong>Invariant:</strong> Organization name must be unique</div>
+        </div>
+      </div>
+
+      <div class="sec-header">5.2 Value Objects (Immutable) & 5.3 Domain Services</div>
+      <div class="comp-grid comp-grid-2">
+        <div>
+          <div class="comp">
+            <div class="comp-title">Value Objects (Immutable)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">Email</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">PhoneNumber</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">Skill</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">Money</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">Percentage</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">Address</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">DateRange</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">Rating</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">JobId</span>
+              <span class="tag" style="background:rgba(196,125,26,0.1);color:var(--l5);border:1px solid rgba(196,125,26,0.2)">ApplicationId</span>
+            </div>
+          </div>
+        </div>
+        <div class="comp-grid comp-grid-2" style="gap:8px">
+          <div class="comp comp-sm">
+            <div class="comp-title">Matching Service</div>
+            <div class="comp-item">Candidate-Job Matching</div>
+            <div class="comp-item">Skill Similarity · Score Calculation</div>
+            <div class="comp-item">Fit Recommendation</div>
+          </div>
+          <div class="comp comp-sm">
+            <div class="comp-title">Screening Service</div>
+            <div class="comp-item">Resume Screening · Skill Extraction</div>
+            <div class="comp-item">Experience Evaluation</div>
+            <div class="comp-item">Shortlisting Logic</div>
+          </div>
+          <div class="comp comp-sm">
+            <div class="comp-title">Evaluation Scoring Service</div>
+            <div class="comp-item">Score Normalization</div>
+            <div class="comp-item">Competency Mapping</div>
+            <div class="comp-item">Feedback Aggregation · Bias Mitigation</div>
+          </div>
+          <div class="comp comp-sm">
+            <div class="comp-title">Decision Service</div>
+            <div class="comp-item">Decision Rules · Stage Progression</div>
+            <div class="comp-item">Offer Generation · Decision Validation</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec-header">5.4 Domain Events & 5.6 Business Rules</div>
+      <div class="comp-grid comp-grid-2">
+        <div class="comp">
+          <div class="comp-title">Domain Events (Past-Tense Facts)</div>
+          <div class="event-list" style="margin-top:4px">
+            <div class="event-tag">CandidateCreated</div>
+            <div class="event-tag">JobPosted</div>
+            <div class="event-tag">ApplicationSubmitted</div>
+            <div class="event-tag">ApplicationAdvanced</div>
+            <div class="event-tag">InterviewScheduled</div>
+            <div class="event-tag">InterviewCompleted</div>
+            <div class="event-tag">EvaluationSubmitted</div>
+            <div class="event-tag">DecisionMade</div>
+            <div class="event-tag">OfferExtended</div>
+            <div class="event-tag">OfferAccepted</div>
+            <div class="event-tag">CandidateRejected</div>
+          </div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Domain Invariants & Business Rules</div>
+          <div class="comp-item">A candidate can apply to a job only once</div>
+          <div class="comp-item">An interview must belong to a valid application</div>
+          <div class="comp-item">A decision can be made only in the correct stage</div>
+          <div class="comp-item">Scores must be within the defined scale</div>
+          <div class="comp-item">An offer can be extended only after approval</div>
+          <div class="comp-item">Candidate email must be unique</div>
+          <div class="comp-item">Job must have at least one required skill</div>
+          <div class="comp-item">System must maintain stage progression rules</div>
+        </div>
+      </div>
+
+      <div class="sec-header">5.8 End-to-End Domain Flow</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">Command/Use Case</div><div class="flow-desc">From Layer 4 (e.g. Submit Application)</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">Validate Command</div><div class="flow-desc">Input Validation</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">Load Aggregates</div><div class="flow-desc">via Repository Ports</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">Apply Business Rules</div><div class="flow-desc">Domain Logic</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Enforce Invariants</div><div class="flow-desc">Consistency Checks</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">Update Aggregates</div><div class="flow-desc">State Changes</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">Publish Domain Events</div><div class="flow-desc">Past Facts</div></div>
+        <div class="flow-step"><div class="flow-num">8</div><div class="flow-title">Return Result</div><div class="flow-desc">Success / Failure</div></div>
+        <div class="flow-step"><div class="flow-num">9</div><div class="flow-title">Persist Changes</div><div class="flow-desc">via Repositories</div></div>
+        <div class="flow-step"><div class="flow-num">10</div><div class="flow-title">Events to L6</div><div class="flow-desc">Event Bus / Store</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 6: DATA & INFRASTRUCTURE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l6" id="l6">
+  <div class="layer-header" onclick="toggleLayer('l6')">
+    <span class="layer-num">LAYER 6</span>
+    <span class="layer-name">DATA & INFRASTRUCTURE LAYER</span>
+    <span class="layer-badge">Persistent Storage · Messaging Backbone · Compute Runtime · Infrastructure Services</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Stateless infra · Event-driven · Security by design · Observability built-in</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Access from L5 (Domain Core)</div>
+        <div class="side-item">CandidateRepository</div>
+        <div class="side-item">JobRepository · ApplicationRepository</div>
+        <div class="side-item">InterviewRepository · EvaluationRepository</div>
+        <div class="side-item">DecisionRepository · AuditRepository</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Access from L4 (Application)</div>
+        <div class="side-item">StoragePort (DB operations)</div>
+        <div class="side-item">EventBusPort (publish/consume)</div>
+        <div class="side-item">CachePort (Redis access)</div>
+        <div class="side-item">SearchPort (OpenSearch)</div>
+        <div class="side-item">AnalyticsPort (data pipelines)</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Access from L1 (Agentic)</div>
+        <div class="side-item">Indirect via Ports → Adapters</div>
+        <div class="side-item">Candidate context retrieval</div>
+        <div class="side-item">Job context retrieval</div>
+        <div class="side-item">Vector similarity search</div>
+        <div class="side-item">Memory access (session & semantic)</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Key Design Principles</div>
+        <div class="side-item">Infrastructure is stateless where possible</div>
+        <div class="side-item">Data is strongly consistent at source</div>
+        <div class="side-item">Event-driven architecture</div>
+        <div class="side-item">All access through Ports & Adapters</div>
+        <div class="side-item">Security by design · Automated backups & DR</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">6.1 Persistent Data Stores</div>
+      <div class="comp-grid comp-grid-6">
+        <div class="comp comp-sm">
+          <div class="comp-title">PostgreSQL / Aurora</div>
+          <div class="comp-sub">Operational DB</div>
+          <div class="comp-item">Candidates, Jobs, Applications</div>
+          <div class="comp-item">Interviews, Decisions, Users & Roles</div>
+          <div class="comp-item">Audit Logs</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l4)">ACID · Strong Consistency</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Kafka / Redpanda</div>
+          <div class="comp-sub">Event Store</div>
+          <div class="comp-item">Domain Events · State Transitions</div>
+          <div class="comp-item">Agent Decisions · Workflow Events</div>
+          <div class="comp-item">Audit Events</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l4)">Append-Only · Immutable History</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Redis</div>
+          <div class="comp-sub">Cache & Session</div>
+          <div class="comp-item">Session Memory · Job Cache</div>
+          <div class="comp-item">Feature Flags · Rate Limiting</div>
+          <div class="comp-item">Idempotency Keys</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l4)">Low Latency · High Throughput</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">OpenSearch / ElasticSearch</div>
+          <div class="comp-sub">Search Index</div>
+          <div class="comp-item">Resume Search · Candidate Search</div>
+          <div class="comp-item">Skill Search · Full-text Search</div>
+          <div class="comp-item">Faceted Search</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l4)">Full-text + Semantic · Fast Retrieval</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">S3 / GCS</div>
+          <div class="comp-sub">Blob Storage</div>
+          <div class="comp-item">Resumes · Documents</div>
+          <div class="comp-item">Interview Recordings · Attachments</div>
+          <div class="comp-item">Reports · Media Files</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l4)">Durable · Scalable Object Storage</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Pinecone / FAISS</div>
+          <div class="comp-sub">Vector Database</div>
+          <div class="comp-item">Candidate Embeddings · Job Embeddings</div>
+          <div class="comp-item">Skill Embeddings · Matching Vectors</div>
+          <div class="comp-item">Semantic Similarity</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l4)">Vector Similarity · ANN Search</em></div>
+        </div>
+      </div>
+
+      <div class="sec-header">6.2 Messaging & Eventing + 6.3 Compute & Runtime</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp">
+          <div class="comp-title">Event Bus (Kafka/Redpanda)</div>
+          <div class="comp-item">Domain Events · Agent Events · System Events</div>
+          <div class="comp-item">High Throughput · Durable · Ordered</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Dead Letter Queue (DLQ)</div>
+          <div class="comp-item">Failed Events · Poison Messages</div>
+          <div class="comp-item">Exhausted Retries · Manual Inspection · Replay Support</div>
+          <div class="comp-item">Reliability & Failure Handling</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Stream Processing (Flink/Kafka Streams)</div>
+          <div class="comp-item">Event Enrichment · Real-time Aggregation</div>
+          <div class="comp-item">Rule Evaluation · Anomaly Detection · State Management</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Container Platform (Kubernetes)</div>
+          <div class="comp-item">Auto Scaling · Self Healing · Rolling Updates</div>
+          <div class="comp-item">Service Discovery · Resource Isolation</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Microservices (All Domain Services)</div>
+          <div class="comp-item">API Services · Workflow Services · Matching Services</div>
+          <div class="comp-item">Notification Services · Utility Services</div>
+          <div class="comp-item">High Availability · Independent Deploy</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Serverless / Functions (Lambda/Cloud Run)</div>
+          <div class="comp-item">Event Handlers · File Processing</div>
+          <div class="comp-item">Scheduled Jobs · Integrations · On-demand Tasks</div>
+          <div class="comp-item">Per-per-Use · Auto Scale</div>
+        </div>
+      </div>
+
+      <div class="sec-header">6.4 Infrastructure Services</div>
+      <div class="comp-grid comp-grid-6">
+        <div class="comp comp-sm">
+          <div class="comp-title">API Gateway (Kong/AWS GW)</div>
+          <div class="comp-item">Routing · Rate Limiting</div>
+          <div class="comp-item">Authentication · Request Validation</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Secrets Manager (Vault/AWS SM)</div>
+          <div class="comp-item">API Keys · DB Credentials</div>
+          <div class="comp-item">Tokens · Certificates · Encryption Keys</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Monitoring (Prometheus/Grafana)</div>
+          <div class="comp-item">Infra Metrics · App Metrics</div>
+          <div class="comp-item">Alerts · Dashboards · SLO Monitoring</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Logging (ELK / Loki)</div>
+          <div class="comp-item">Centralized Logs · Log Aggregation</div>
+          <div class="comp-item">Search & Filter · Retention Policies</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Tracing (OpenTelemetry/Jaeger)</div>
+          <div class="comp-item">Distributed Tracing · Request Flow</div>
+          <div class="comp-item">Latency Analysis · Service Map</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Backup & DR (CloudFront)</div>
+          <div class="comp-item">Automated Backups · PITR</div>
+          <div class="comp-item">Cross-Region Replication · DR Drills</div>
+        </div>
+      </div>
+
+      <div class="sec-header">6.5 Data Governance & Lifecycle</div>
+      <div class="comp-grid comp-grid-5">
+        <div class="comp comp-sm"><div class="comp-title">Data Quality</div><div class="comp-item">Validation Rules · Data Profiling · Cleansing · Deduplication · Consistency</div></div>
+        <div class="comp comp-sm"><div class="comp-title">Data Lineage</div><div class="comp-item">Source Tracking · Transformation Flow · Impact Analysis · Metadata Catalog</div></div>
+        <div class="comp comp-sm"><div class="comp-title">Data Retention</div><div class="comp-item">Retention Policies · TTL Management · Auto Purge · Legal Hold</div></div>
+        <div class="comp comp-sm"><div class="comp-title">Data Security</div><div class="comp-item">Encryption at rest/transit · Tokenization · PII Masking · Access Control · Row-Level Security</div></div>
+        <div class="comp comp-sm"><div class="comp-title">Compliance</div><div class="comp-item">Audit Trails · Regulatory Policies · Data Privacy (GDPR) · Compliance Reports</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 7: CROSS-CUTTING CONCERNS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l7" id="l7">
+  <div class="layer-header" onclick="toggleLayer('l7')">
+    <span class="layer-num">LAYER 7</span>
+    <span class="layer-name">CROSS-CUTTING CONCERNS</span>
+    <span class="layer-badge">Applies to ALL Layers · Observability · Security · Governance · Operational Excellence</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Observability is built-in, not bolted-on · Security is everyone's responsibility</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Receives From All Layers (1-9)</div>
+        <div class="side-item">Logs (Application, System, Audit)</div>
+        <div class="side-item">Metrics (Infra, App, Business)</div>
+        <div class="side-item">Traces (Requests, Events, Jobs)</div>
+        <div class="side-item">Security Events & Alerts</div>
+        <div class="side-item">Audit Logs & Data Changes</div>
+        <div class="side-item">Performance & Health Signals</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Provides to All Layers (1-9)</div>
+        <div class="side-item">Dashboards & Insights</div>
+        <div class="side-item">Alerts & Notifications</div>
+        <div class="side-item">Policies & Controls</div>
+        <div class="side-item">Audit & Compliance</div>
+        <div class="side-item">Security Enforcement</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Tech Stack</div>
+        <div class="side-item">Logging: ELK / OpenSearch / Loki</div>
+        <div class="side-item">Metrics: Prometheus / Grafana</div>
+        <div class="side-item">Tracing: OpenTelemetry / Jaeger</div>
+        <div class="side-item">Security: Vault / AWS KMS / WAF</div>
+        <div class="side-item">SIEM: Splunk / Microsoft Sentinel</div>
+        <div class="side-item">Compliance: OneTrust / Drata</div>
+        <div class="side-item">IAM: Okta / Azure AD / KeyCloak</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">7.1 Observability & Monitoring</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp">
+          <div class="comp-title">Centralized Logging (ELK/Loki)</div>
+          <div class="comp-item">Application Logs · Security Logs · Audit Logs</div>
+          <div class="comp-item">Access Logs · Infrastructure Logs</div>
+          <div class="comp-item">Correlation & Search</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l3)">Unified · Searchable · Retained</em></div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Metrics & Monitoring (Prometheus/Grafana)</div>
+          <div class="comp-item">Infra Metrics (CPU, Mem) · App Metrics (RPS, Errors)</div>
+          <div class="comp-item">Business Metrics (KPIs) · Custom Dashboards</div>
+          <div class="comp-item">Threshold Alerts · Anomaly Detection</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l3)">Real-time Visibility</em></div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Distributed Tracing (OpenTelemetry/Jaeger)</div>
+          <div class="comp-item">Request Tracing · Event Tracing · Service Dependencies</div>
+          <div class="comp-item">Latency Analysis · Error Correlation</div>
+          <div class="comp-item">Trace Visualization</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l3)">End-to-End Visibility</em></div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Business Observability</div>
+          <div class="comp-item">Workflow Metrics · SLA / SLA Violations</div>
+          <div class="comp-item">Conversion Metrics · Agent Performance</div>
+          <div class="comp-item">Decision Accuracy · Operational KPIs</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l3)">Business Context Insight</em></div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Health & Availability</div>
+          <div class="comp-item">Health Checks · Synthetic Monitoring</div>
+          <div class="comp-item">Dependency Checks · Service Status</div>
+          <div class="comp-item">Uptime Monitoring · Incident Detection</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Alerting & Notification (AlertManager/SNS)</div>
+          <div class="comp-item">Multi-channel Alerts · Severity Routing</div>
+          <div class="comp-item">Escalation Policies · On-call Routing</div>
+          <div class="comp-item">Alert Deduplication · Noise Reduction</div>
+        </div>
+      </div>
+
+      <div class="sec-header">7.2 Security & Privacy</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp">
+          <div class="comp-title">Identity & Access Mgmt (IAM/Cognito/KeyCloak)</div>
+          <div class="comp-item">SSO / OAuth / OIDC · RBAC / ABAC</div>
+          <div class="comp-item">MFA / 2FA · User Lifecycle Mgmt · Service Accounts</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Data Protection (Encryption/KMS)</div>
+          <div class="comp-item">Encryption At Rest · Encryption In Transit</div>
+          <div class="comp-item">Data Masking · Tokenization · Key Management</div>
+          <div class="comp-item">Access Control · No Secrets in Code</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Secrets Management (Vault/AWS SM)</div>
+          <div class="comp-item">API Keys · DB Credentials · Tokens · Certificates</div>
+          <div class="comp-item">Rotation & TTL · Key Management · Access Control</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Application Security (DevSecOps)</div>
+          <div class="comp-item">Input Validation · OWASP Top 10</div>
+          <div class="comp-item">Dependency Scanning · SAST / DAST · Security Testing</div>
+          <div class="comp-item">Secure by Design</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Network Security (VPC/WAF/Firewall)</div>
+          <div class="comp-item">VPC & Subnet Isolation · Security Groups</div>
+          <div class="comp-item">WAF / DDoS Protection · API Gateway Security</div>
+          <div class="comp-item">Private Endpoints · Defense in Depth</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Compliance & Privacy (GDPR/SOC2/ISO)</div>
+          <div class="comp-item">Data Classification · PII Detection</div>
+          <div class="comp-item">Consent Management · Right to Erasure · Audit & Evidence</div>
+          <div class="comp-item">Privacy by Design</div>
+        </div>
+      </div>
+
+      <div class="sec-header">7.3 Governance & Compliance + 7.4 Operational Excellence</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp comp-sm">
+          <div class="comp-title">Policy Management</div>
+          <div class="comp-item">Security, Access, Data, Retention Policies</div>
+          <div class="comp-item">Naming Standards · Centralized Policy Hub</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Audit & Accountability</div>
+          <div class="comp-item">Audit Logs · Data Access Logs</div>
+          <div class="comp-item">Admin Actions · Config Changes · System Events</div>
+          <div class="comp-item">Immutable Audit Trail</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Performance Management</div>
+          <div class="comp-item">Capacity Planning · Performance Testing</div>
+          <div class="comp-item">Load Testing · Bottleneck Analysis</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Reliability Engineering</div>
+          <div class="comp-item">SLO / SLI / SLA · Error Budgeting</div>
+          <div class="comp-item">Availability Targets · Chaos Testing</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Incident Management</div>
+          <div class="comp-item">Incident Detection · Triage & Prioritization</div>
+          <div class="comp-item">Response Playbooks · Postmortems · Root Cause Analysis</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Continuous Improvement</div>
+          <div class="comp-item">Metrics Review · Process Improvement</div>
+          <div class="comp-item">Automation Optimization · Feedback Loops · Retrospectives</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 8: GOVERNANCE & COMPLIANCE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l8" id="l8">
+  <div class="layer-header" onclick="toggleLayer('l8')">
+    <span class="layer-num">LAYER 8</span>
+    <span class="layer-name">GOVERNANCE & COMPLIANCE LAYER</span>
+    <span class="layer-badge">Regulatory Compliance · Policy Enforcement · Risk Management · Ethics · Auditability</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Governance is built-in · Policies are centralized · Compliance is continuous</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Governance Domains</div>
+        <div class="side-item"><strong>Data Governance:</strong> Data Ownership, Quality, Classification, Lineage, Catalog</div>
+        <div class="side-item"><strong>Access Governance:</strong> Identity & Access, Role Mgmt, Access Reviews, Segregation of Duties</div>
+        <div class="side-item"><strong>Policy Governance:</strong> Policy Definition, Versioning, Lifecycle, Distribution, Enforcement</div>
+        <div class="side-item"><strong>Risk Governance:</strong> Risk ID, Assessment, Scoring, Monitoring, Reporting</div>
+        <div class="side-item"><strong>Ethics & AI Governance:</strong> AI Model Governance, Bias & Fairness, Explainability, Human Oversight</div>
+        <div class="side-item"><strong>Vendor Governance:</strong> Assessment, Contracts & SLA, Risk Management, Third-Party Compliance</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Compliance Frameworks</div>
+        <div class="side-item">GDPR · CCPA / CPRA · SOC 2</div>
+        <div class="side-item">ISO 27001 · HIPAA · AI Act (EU)</div>
+        <div class="side-item">NIST CSF · PCI DSS</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">8.2 Core Capabilities</div>
+      <div class="comp-grid comp-grid-4">
+        <div class="comp">
+          <div class="comp-title">Policy Engine (Decision as Code)</div>
+          <div class="comp-item">Rule Evaluation · Regulation Mapping</div>
+          <div class="comp-item">Context-Aware · Dynamic Enforcement</div>
+          <div class="comp-tech"><span>Tech:</span> OPA / Open Policy Agent</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Rule & Control Library</div>
+          <div class="comp-item">Predefined Controls · Preventive Controls</div>
+          <div class="comp-item">Business Rules · Risk Controls</div>
+          <div class="comp-item">Reusable Controls</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Control Enforcement (Enforce Everywhere)</div>
+          <div class="comp-item">Real-time Enforcement · Regulatory Checks</div>
+          <div class="comp-item">Detective Controls · Corrective Controls</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Continuous Monitoring (Always Monitoring)</div>
+          <div class="comp-item">Real-time Monitoring · Policy Monitoring</div>
+          <div class="comp-item">Threshold Alerts · Drift Detection</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Audit & Evidence Mgmt (Evidence Ready)</div>
+          <div class="comp-item">Evidence Collection · Audit Trails (Immutable)</div>
+          <div class="comp-item">Logs & Time Stamping</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Reporting & Dashboards (Insights & Visibility)</div>
+          <div class="comp-item">Compliance Reports · Audit Reports</div>
+          <div class="comp-item">Executive Dashboards · Risk Reports</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">Approval & Exception Mgmt (Controlled Exceptions)</div>
+          <div class="comp-item">Exception Requests · Risk-based Approval</div>
+          <div class="comp-item">SoD Approvals · Exception Tracking</div>
+        </div>
+        <div class="comp">
+          <div class="comp-title">5 Key Controls (Applied System-wide)</div>
+          <div class="comp-item">Access Control (RBAC, ABAC, MFA)</div>
+          <div class="comp-item">Data Classification (Public/PII/Confidential)</div>
+          <div class="comp-item">Data Encryption (Transit & Rest)</div>
+          <div class="comp-item">Audit Logging (All Actions, Tamper-Proof)</div>
+          <div class="comp-item">Retention & Disposal · Segregation of Duties</div>
+        </div>
+      </div>
+
+      <div class="sec-header">8.7 End-to-End Governance Flow</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">Event / Action</div><div class="flow-desc">Occurs in any layer (1-9)</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">Event Logged</div><div class="flow-desc">Logs, Metrics, Traces, Detail</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">Ingest & Classify</div><div class="flow-desc">Governance Layer: classify PII, sensitivity type</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">Policy Evaluation</div><div class="flow-desc">Rules Applied (Policy Engine)</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Control Check</div><div class="flow-desc">Controls Library: compliance check</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">Risk Assessment</div><div class="flow-desc">Risk Engine: score & impact</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">Decision</div><div class="flow-desc">Allow/Block · Alert/Approve</div></div>
+        <div class="flow-step"><div class="flow-num">8</div><div class="flow-title">Action Taken</div><div class="flow-desc">Enforced in original layer</div></div>
+        <div class="flow-step"><div class="flow-num">9</div><div class="flow-title">Audit & Evidence</div><div class="flow-desc">Recorded in immutable store</div></div>
+        <div class="flow-step"><div class="flow-num">10</div><div class="flow-title">Dashboards & Detect</div><div class="flow-desc">Real-time dashboards updated</div></div>
+        <div class="flow-step"><div class="flow-num">11</div><div class="flow-title">Feedback Loop</div><div class="flow-desc">Improve policies & controls</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- LAYER 9: FAILURE & RESILIENCE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="layer l9" id="l9">
+  <div class="layer-header" onclick="toggleLayer('l9')">
+    <span class="layer-num">LAYER 9</span>
+    <span class="layer-name">FAILURE & RESILIENCE LAYER</span>
+    <span class="layer-badge">Fault Tolerance · Graceful Degradation · Incident Response · Business Continuity</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9px;color:var(--muted);margin-right:12px">Resilience is built-in · Fail fast, recover faster · Detect early · Contain fast</span>
+    <span class="layer-toggle">▾</span>
+  </div>
+  <div class="layer-body">
+    <div class="side-panel">
+      <div class="side-section">
+        <div class="side-label">Receives From All Layers</div>
+        <div class="side-item">Health Signals & Heartbeats</div>
+        <div class="side-item">Errors, Exceptions & Timeouts</div>
+        <div class="side-item">Performance & Capacity Metrics</div>
+        <div class="side-item">Dependency Signals & Degradations</div>
+        <div class="side-item">User Impact Signals & Alerts</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Provides to All Layers</div>
+        <div class="side-item">Health Guarantees · Resilience Patterns</div>
+        <div class="side-item">Recovery Services · Health Monitoring</div>
+        <div class="side-item">Business Continuity</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Non-Functional Responsibilities</div>
+        <div class="side-item">High Availability & Resilience</div>
+        <div class="side-item">Fault Tolerance & Self-Healing</div>
+        <div class="side-item">Business Continuity</div>
+        <div class="side-item">Disaster Recovery</div>
+        <div class="side-item">Low MTTR (Mean Time To Recover)</div>
+        <div class="side-item">Operational Excellence</div>
+        <div class="side-item">Cost-effective Resilience</div>
+      </div>
+      <div class="side-section">
+        <div class="side-label">Tech Stack</div>
+        <div class="side-item">Monitoring: Prometheus/Grafana/Datadog</div>
+        <div class="side-item">Logging: ELK / OpenSearch / Loki</div>
+        <div class="side-item">Tracing: OpenTelemetry / Jaeger / Tempo</div>
+        <div class="side-item">Alerting: AlertManager/PagerDuty</div>
+        <div class="side-item">Chaos Engg: Gremlin / Litmus / Chaos Mesh</div>
+        <div class="side-item">Incident Mgmt: PagerDuty / ServiceNow / Jira</div>
+        <div class="side-item">Backup/DR: AWS Backup / Velero / Veeam</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="sec-header">9.1 Failure Detection & Signaling</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp comp-sm">
+          <div class="comp-title">Health Checks</div>
+          <div class="comp-item">Liveness Checks · Readiness Checks</div>
+          <div class="comp-item">Startup Probes · Dependency Checks · Synthetic Checks</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l9)">Detect Early</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Metrics & Thresholds</div>
+          <div class="comp-item">Infra Metrics · App Metrics · Business Metrics</div>
+          <div class="comp-item">SLO / SLA Tracking · Error Rate Thresholds</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l9)">Define Boundaries</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Anomaly Detection</div>
+          <div class="comp-item">Behavior Anomalies · Traffic Anomalies</div>
+          <div class="comp-item">Latency Anomalies · Noise Reduction · ML-based Detection</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l9)">Spot Unknown Unknowns</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Log Analysis</div>
+          <div class="comp-item">Error Pattern Detection · Exception Correlation</div>
+          <div class="comp-item">Trace Correlation · Root Cause Hints</div>
+          <div class="comp-item"><em style="font-size:8px;color:var(--l9)">Connect the Dots</em></div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Event Correlation</div>
+          <div class="comp-item">Multi-source Events · Causal Correlation</div>
+          <div class="comp-item">Timeline Reconstruction · Impact Analysis · Blast Radius Detection</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Alerting & Routing</div>
+          <div class="comp-item">Smart Alerting · Deduplication</div>
+          <div class="comp-item">Escalation Policies · On-call Routing · Noise Suppression</div>
+        </div>
+      </div>
+
+      <div class="sec-header">9.2 Resilience Mechanisms</div>
+      <div class="comp-grid comp-grid-4">
+        <div class="comp comp-sm">
+          <div class="comp-title">Retry Mechanisms</div>
+          <div class="comp-item">Exponential Backoff · Jittered Retries</div>
+          <div class="comp-item">Max Attempts · Idempotent Retries · Retry Budget</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Timeouts & Cancellation</div>
+          <div class="comp-item">Per-call Timeouts · Circuit-level Timeouts</div>
+          <div class="comp-item">Global Deadlines · Cancellation Tokens · Hedged Requests</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Circuit Breaker</div>
+          <div class="comp-item">Closed / Open / Half-Open</div>
+          <div class="comp-item">Failure Threshold · Success Threshold</div>
+          <div class="comp-item">Regional Failover · Auto Recovery</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Bulkhead Isolation</div>
+          <div class="comp-item">Thread Pools · Connection Pools · Resource Pools</div>
+          <div class="comp-item">Service Isolation · Traffic Throttling</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Rate Limiting</div>
+          <div class="comp-item">Per-user / Per-tenant · Per-service / Global</div>
+          <div class="comp-item">Dynamic Limits · Adaptive Throttling · Backpressure Support</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Fallback & Degradation</div>
+          <div class="comp-item">Cached Fallbacks · Static Fallbacks</div>
+          <div class="comp-item">Graceful Degradation · Feature Toggling · Alternative Paths</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Idempotency</div>
+          <div class="comp-item">Idempotency Keys · Duplicate Detection</div>
+          <div class="comp-item">Exactly-Once Effect · Safe Retries · State Consistency</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Compensation (Sagas)</div>
+          <div class="comp-item">Saga Rollbacks · State Undo</div>
+          <div class="comp-item">Reverse Operations · Consistency Repair · Fix What Went Wrong</div>
+        </div>
+      </div>
+
+      <div class="sec-header">9.3 Recovery & Self-Healing + 9.4 Business Continuity</div>
+      <div class="comp-grid comp-grid-3">
+        <div class="comp comp-sm">
+          <div class="comp-title">Auto Recovery</div>
+          <div class="comp-item">Auto Restart Services · Auto Scale Resources</div>
+          <div class="comp-item">Auto Rebalance Traffic · Auto Clear Stuck State · Auto Reconnect</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Failover (Active/Passive & Active/Active)</div>
+          <div class="comp-item">Multi-AZ Failover · Regional Failover · Data Failover</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Replication</div>
+          <div class="comp-item">Data Replication · Queue Replication</div>
+          <div class="comp-item">Cross-Region Replication · Read Replica Failover · State Sync</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Dead Letter Handling</div>
+          <div class="comp-item">DLQ Capture · DLQ Alerting · DLQ Replay</div>
+          <div class="comp-item">Poison Message Handling · Quarantine & Fix</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Backup Strategy</div>
+          <div class="comp-item">Automated Backups · Point-in-Time Recovery</div>
+          <div class="comp-item">Multi-AZ · Immutable Backups · Backup Verification</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Disaster Recovery</div>
+          <div class="comp-item">DR Runbooks · RTO / RPO Targets</div>
+          <div class="comp-item">Cross-Region DR · Infra as Code · Failover Drills</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Chaos Engineering</div>
+          <div class="comp-item">Failure Injection · Game Days</div>
+          <div class="comp-item">Chaos Experiments · Resilience Testing · Learn & Improve</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">SLA / SLO Management</div>
+          <div class="comp-item">Define SLOs · Error Budgets · Capacity Scaling</div>
+          <div class="comp-item">SLA Monitoring · SLO Alerts · SLO Reviews</div>
+        </div>
+        <div class="comp comp-sm">
+          <div class="comp-title">Capacity & Scaling</div>
+          <div class="comp-item">Auto Scaling · Predictive Scaling</div>
+          <div class="comp-item">Headroom Management · Load Shedding · Burst Capacity</div>
+        </div>
+      </div>
+
+      <div class="sec-header">9.6 Resilience Lifecycle (10-step)</div>
+      <div class="flow-row">
+        <div class="flow-step"><div class="flow-num">1</div><div class="flow-title">Problem Occurs</div><div class="flow-desc">Detected in any layer</div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div class="flow-title">Detection</div><div class="flow-desc">Health Check / Alert / Anomaly / Threshold</div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div class="flow-title">Signal & Correlate</div><div class="flow-desc">Retry / Timeout / Circuit Breaker / Throttle</div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div class="flow-title">Mitigation</div><div class="flow-desc">Correlate Impact</div></div>
+        <div class="flow-step"><div class="flow-num">5</div><div class="flow-title">Fallback / Degrade</div><div class="flow-desc">Use Fallback Path · Graceful Degradation</div></div>
+        <div class="flow-step"><div class="flow-num">6</div><div class="flow-title">Recovery</div><div class="flow-desc">Auto Recovery / Failover · Fix / Restart / Heal</div></div>
+        <div class="flow-step"><div class="flow-num">7</div><div class="flow-title">Validation</div><div class="flow-desc">Health Verification · Data / State Check</div></div>
+        <div class="flow-step"><div class="flow-num">8</div><div class="flow-title">Restore Normal</div><div class="flow-desc">Traffic Ramp-up · Return to Normal</div></div>
+        <div class="flow-step"><div class="flow-num">9</div><div class="flow-title">Post-Incident</div><div class="flow-desc">Analysis / RCA</div></div>
+        <div class="flow-step"><div class="flow-num">10</div><div class="flow-title">Continuous Improve</div><div class="flow-desc">Update Policies · Prevent Recurrence</div></div>
+      </div>
+      <div style="font-size:8px;color:var(--muted);padding-top:4px">Principles: Detect Early → Contain Fast → Recover Automatically → Learn Continuously → Strengthen Resilience</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px 20px;margin-top:8px;">
+  <div class="sec-header" style="margin-bottom:12px">Architecture Summary — Key Design Principles</div>
+  <div class="principles" style="grid-template-columns:repeat(5,1fr)">
+    <div class="principle">Hexagonal Architecture: all external calls go through Ports → Adapters</div>
+    <div class="principle">Domain Core (L5) has zero dependency on frameworks or infrastructure</div>
+    <div class="principle">Event-driven async backbone (Kafka) decouples all layers</div>
+    <div class="principle">L1 Agents are stateless; only the Orchestrator holds execution state</div>
+    <div class="principle">All I/O are structured, versioned, schema-validated JSON events</div>
+    <div class="principle">LLM calls are minimized: rules-first, LLM only when necessary (cost-aware routing)</div>
+    <div class="principle">Every decision is auditable, traceable, and explainable by design</div>
+    <div class="principle">PII is encrypted at rest & in transit; masked in logs everywhere</div>
+    <div class="principle">Resilience is built-in at every layer: retry, circuit break, saga, DLQ</div>
+    <div class="principle">L7, L8, L9 are horizontal — they apply to every other layer simultaneously</div>
+  </div>
+  <div style="margin-top:12px;font-size:8px;color:var(--muted);text-align:center">
+    All data access is routed via: L4 (Application) → L3 (Ports) → L2 (Adapters) → L6 (Data & Infrastructure) — ensures consistency, security, and separation of concerns
+  </div>
+</div>
+
+</div><!-- /canvas -->
+
+<button id="scrolltop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ Top</button>
+
+<script>
+function toggleLayer(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('collapsed');
+}
+
+// Collapse all on load for a cleaner start, then expand first
+document.addEventListener('DOMContentLoaded', () => {
+  // All expanded by default — user can collapse
+});
+</script>
+</body>
+</html>
