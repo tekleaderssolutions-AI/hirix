@@ -1,5 +1,20 @@
 import React, { useState } from 'react';
-import { ChevronDown, Trash2, HelpCircle } from 'lucide-react';
+import { 
+  ChevronDown, 
+  Trash2, 
+  HelpCircle, 
+  Globe, 
+  Settings, 
+  User, 
+  Phone, 
+  ClipboardCheck, 
+  MessageSquare, 
+  FileSignature, 
+  CheckCircle, 
+  Plus, 
+  X, 
+  CloudUpload 
+} from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Avatar } from '@/components/ui';
 import { 
@@ -9,7 +24,8 @@ import {
   EXPERIENCE_LEVELS, 
   EDUCATION_LEVELS 
 } from '@/lib/constants';
-import { useCreateJob, useNextJobCode } from '@/hooks/useJobs';
+import { useCreateJob, useNextJobCode, useAnalyzeJob } from '@/hooks/useJobs';
+import { useUploadCandidates } from '@/hooks/useCandidates';
 import useUiStore from '@/store/uiStore';
 import { useNavigate } from 'react-router-dom';
 
@@ -17,9 +33,12 @@ export default function JobNewPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Job details');
+  const [activePipelineStage, setActivePipelineStage] = useState('phone');
   const [creationMode, setCreationMode] = useState(null); // null, 'manual', 'upload'
   const createJob = useCreateJob();
   const { data: nextCode } = useNextJobCode();
+  const analyzeJob = useAnalyzeJob();
+  const uploadCandidates = useUploadCandidates();
   const addToast = useUiStore(s => s.addToast);
 
   const [formData, setFormData] = useState({
@@ -43,7 +62,7 @@ export default function JobNewPage() {
     status: 'draft'
   });
 
-  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFiles, setUploadFiles] = useState([]);
 
   // Pre-fill job code when fetched
   React.useEffect(() => {
@@ -59,7 +78,7 @@ export default function JobNewPage() {
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
-
+  
   const handleSave = async (isDraft = true) => {
     try {
       const workplaceMap = {
@@ -91,6 +110,7 @@ export default function JobNewPage() {
       };
       
       const response = await createJob.mutateAsync(dataToSave);
+      console.log('Create Job Response:', response);
       
       // Update formData with any server-returned fields (like id)
       if (response && response.id) {
@@ -100,12 +120,14 @@ export default function JobNewPage() {
       addToast({
         title: isDraft ? 'Draft saved' : 'Job published',
         message: 'Job has been successfully ' + (isDraft ? 'saved as draft' : 'published'),
-        variant: 'success'
+        type: 'success'
       });
 
       if (!isDraft && !response?.id) {
         navigate('/jobs');
       }
+
+      return response;
     } catch (error) {
       const errorData = error.response?.data?.detail;
       let message = 'Failed to save job';
@@ -125,7 +147,117 @@ export default function JobNewPage() {
       addToast({
         title: 'Error',
         message: message,
-        variant: 'danger'
+        type: 'error'
+      });
+      throw error; // Re-throw so callers can handle failure
+    }
+  };
+
+  const handleUpload = async () => {
+    if (uploadFiles.length === 0) return;
+
+    try {
+      const formDataObj = new FormData();
+      formDataObj.append('file', uploadFiles[0]); // Analysis only needs one file
+      formDataObj.append('job_code', formData.job_code);
+
+      addToast({ 
+        title: 'Processing', 
+        message: 'AI is extracting details from your document...', 
+        type: 'info' 
+      });
+
+      const extractedData = await analyzeJob.mutateAsync(formDataObj);
+      
+      // Update form with extracted data
+      setFormData(prev => ({
+        ...prev,
+        ...extractedData,
+        // Ensure job_code is preserved if not returned
+        job_code: extractedData.job_code || prev.job_code
+      }));
+
+      // Clear the files after successful upload
+      setUploadFiles([]);
+      // Switch to manual mode to review
+      setCreationMode('manual');
+      setActiveTab('Job details');
+    } catch (error) {
+      addToast({
+        title: 'Error',
+        message: error.response?.data?.detail || error.message || 'Failed to analyze document',
+        type: 'error'
+      });
+    }
+  };
+
+  const handleCandidateUpload = async () => {
+    if (uploadFiles.length === 0) return;
+
+    let jobId = formData.id;
+    let jobCode = formData.job_code;
+
+    // Auto-save as draft if job hasn't been saved yet
+    if (!jobId) {
+      try {
+        addToast({
+          title: 'Saving Job',
+          message: 'Saving job draft before uploading candidates...',
+          type: 'info'
+        });
+        const savedJob = await handleSave(true);
+        jobId = savedJob.id;
+        jobCode = savedJob.job_code;
+      } catch (error) {
+        // handleSave already shows toast
+        return;
+      }
+    }
+
+    try {
+      const formDataObj = new FormData();
+      // Use 'file' (singular)
+      formDataObj.append('file', uploadFiles[0]);
+      
+      // Send job_code and job_id in FormData
+      formDataObj.append('job_code', jobCode);
+      if (jobId) formDataObj.append('job_id', jobId);
+
+      console.log('Sending upload for job_code:', jobCode);
+
+      addToast({ 
+        title: 'Uploading', 
+        message: `Uploading candidate...`, 
+        type: 'info' 
+      });
+
+      await uploadCandidates.mutateAsync({ 
+        formData: formDataObj, 
+        jobCode: jobCode 
+      });
+      
+      addToast({
+        title: 'Success',
+        message: 'Candidates uploaded successfully!',
+        type: 'success'
+      });
+
+      setUploadFiles([]);
+    } catch (error) {
+      console.error('Candidate upload failed:', error.response?.data || error.message);
+      
+      let message = 'Failed to upload candidates';
+      const errorData = error.response?.data?.detail;
+
+      if (errorData) {
+        // If it's a validation error, show the raw JSON for debugging
+        message = typeof errorData === 'object' ? JSON.stringify(errorData) : errorData;
+      }
+
+      addToast({
+        title: 'Upload Error',
+        message: message,
+        type: 'error'
       });
     }
   };
@@ -421,6 +553,289 @@ export default function JobNewPage() {
     </div>
   );
 
+  const renderTeamMembers = () => (
+    <div className="job-content-card">
+      <div className="job-content-header">
+        <h3>Team members</h3>
+        <HelpCircle size={16} color="#ccc" />
+      </div>
+      
+      <div className="job-content-body">
+        <div className="member-row">
+          <div className="member-info">
+            <Avatar name={fullName} size="sm" />
+            <span className="member-name">{fullName}</span>
+            <span className="member-email">{email}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+            <span className="member-role-text">You're an Admin for this job</span>
+            <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#999' }}>
+              <Trash2 size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '32px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#999', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Other members
+          </div>
+          <p style={{ fontSize: '14px', color: '#666' }}>
+            You can add other account members to your team or invite people to join Workable to collaborate on this job.
+          </p>
+          
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn-invite-member">
+              Invite a new member
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderFindCandidates = () => (
+    <div className="find-candidates-container">
+      {/* Option 1: Document Uploading */}
+      <div className="sourcing-option-section" style={{ marginBottom: '40px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', maxWidth: '600px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div className="option-number" style={{ padding: '2px 8px', fontSize: '11px' }}>Option 1</div>
+            <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: 0 }}>Document Uploading</h3>
+          </div>
+
+          <button 
+            className="btn-save-continue"
+            style={{ padding: '8px 16px', fontSize: '13px' }}
+            disabled={uploadFiles.length === 0 || uploadCandidates.isPending}
+            onClick={handleCandidateUpload}
+          >
+            {uploadCandidates.isPending ? 'Uploading...' : 'Upload'}
+          </button>
+        </div>
+        
+        <div style={{ maxWidth: '600px' }}>
+          <div className="upload-area secondary" style={{ padding: '32px 24px' }} onClick={() => document.getElementById('candidateUpload').click()}>
+          <input 
+            type="file" 
+            id="candidateUpload" 
+            hidden 
+            multiple
+            accept=".pdf,.doc,.docx,.zip"
+            onChange={(e) => setUploadFiles(e.target.files)}
+          />
+          <div className="upload-icon-medium" style={{ marginBottom: '12px' }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00756a" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <p className="upload-text" style={{ fontSize: '14px' }}>Upload candidate resumes or a ZIP folder</p>
+          <p className="upload-hint" style={{ fontSize: '12px' }}>Supported formats: PDF, DOCS, ZIP</p>
+        </div>
+      </div>
+    </div>
+
+    <div style={{ textAlign: 'center', margin: '24px 0', color: '#999', fontSize: '12px', fontWeight: 600 }}>OR</div>
+
+      {/* Option 2: Multi-channel Sourcing */}
+      <div className="sourcing-option-section">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <div className="option-number" style={{ padding: '2px 8px', fontSize: '11px' }}>Option 2</div>
+          <h3 className="option-title" style={{ marginBottom: 0, fontSize: '20px' }}>Multi-channel Sourcing</h3>
+        </div>
+
+        {/* Step 1 */}
+        <div className="sourcing-step">
+          <div className="step-marker">1</div>
+          <div className="step-content">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <h3 className="step-title" style={{ marginBottom: 0 }}>Get off to the right start</h3>
+              <span className="coming-soon-badge">Coming Soon</span>
+            </div>
+            <p className="step-subtitle">Get the most quality candidates quickly - these actions are our top performers.</p>
+            
+            <div className="sourcing-grid">
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h6"/></svg></div>
+                <h4>Premium job boards</h4>
+                <p>Use premium job boards to increase visibility and collect more candidates.</p>
+                <button className="sourcing-link">Boost visibility</button>
+              </div>
+
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg></div>
+                <h4>Referrals</h4>
+                <p>Send an email to your employees inviting them to submit referrals.</p>
+                <button className="sourcing-link">Edit Referrals settings</button>
+              </div>
+
+              <div className="sourcing-card muted">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                <h4>Passive candidates</h4>
+                <p>Profiles matching your job in our global database.</p>
+                <button className="sourcing-link disabled">Preview candidates</button>
+              </div>
+
+              <div className="sourcing-card muted">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
+                <h4>Resurfaced candidates</h4>
+                <p>Past candidates who match this new job.</p>
+                <button className="sourcing-link disabled">Preview candidates</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 2 */}
+        <div className="sourcing-step">
+          <div className="step-marker">2</div>
+          <div className="step-content">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <h3 className="step-title" style={{ marginBottom: 0 }}>More options to consider</h3>
+              <span className="coming-soon-badge">Coming Soon</span>
+            </div>
+            <p className="step-subtitle">These inbound and outbound sourcing features provide a wide range of ways to find your next hire.</p>
+            
+            <div className="sourcing-grid">
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg></div>
+                <h4>Free job boards</h4>
+                <p>Post your job to our network of free job boards to start receiving applications.</p>
+                <button className="sourcing-link">View boards</button>
+              </div>
+
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg></div>
+                <h4>Invite Recruiters</h4>
+                <p>Add external recruiters to your job and allow them to add candidates.</p>
+                <button className="sourcing-link">Invite now</button>
+              </div>
+
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
+                <h4>Share on Social Media</h4>
+                <div className="social-icons">
+                  <span className="social-circle fb">f</span>
+                  <span className="social-circle in">in</span>
+                  <span className="social-circle tw">𝕏</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 3 */}
+        <div className="sourcing-step">
+          <div className="step-marker">3</div>
+          <div className="step-content">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <h3 className="step-title" style={{ marginBottom: 0 }}>Finally, a few smaller actions you can take</h3>
+              <span className="coming-soon-badge">Coming Soon</span>
+            </div>
+            <p className="step-subtitle">Actions that ensure you're receiving candidates from everywhere in your recruiting mix.</p>
+            
+            <div className="sourcing-grid">
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                <h4>Website Connect</h4>
+                <p>Embed your jobs on your website. We provide the code and update automatically.</p>
+                <button className="sourcing-link">Connect</button>
+              </div>
+
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+                <h4>Job Shortlink</h4>
+                <div className="sourcing-input-box">https://apply.workable.com/j/7AA...</div>
+                <button className="sourcing-link">Copy to clipboard</button>
+              </div>
+
+              <div className="sourcing-card">
+                <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+                <h4>Job Mailbox</h4>
+                <div className="sourcing-input-box">7AA6F6E414@jobs.workablemail...</div>
+                <button className="sourcing-link">Copy to clipboard</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="sourcing-step last">
+          <div className="step-marker">4</div>
+          <div className="step-content">
+            <h3 className="step-title">Happy recruiting! Good luck.</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderWorkflow = () => {
+    const stages = [
+      { id: 'sourced', label: 'Sourced', icon: Settings },
+      { id: 'applied', label: 'Applied', icon: User },
+      { id: 'phone', label: 'Phone Screen', icon: Phone },
+      { id: 'assessment', label: 'Assessment', icon: ClipboardCheck },
+      { id: 'interview', label: 'Interview', icon: MessageSquare },
+      { id: 'offer', label: 'Offer', icon: FileSignature },
+      { id: 'hired', label: 'Hired', icon: CheckCircle },
+    ];
+
+    return (
+      <div className="job-content-card full-fit" style={{ 
+        margin: 0, 
+        borderRadius: 0, 
+        border: 'none'
+      }}>
+        <div className="job-content-header" style={{ borderBottom: 'none', padding: '24px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#666' }}>Default pipeline</h3>
+        </div>
+        
+        <div className="pipeline-container">
+          <div className="pipeline-stages" style={{ 
+            display: 'flex', 
+            borderTop: '1px solid #eee', 
+            borderBottom: '1px solid #eee',
+            backgroundColor: '#fcfbf8'
+          }}>
+            {stages.map((stage, index) => {
+              const Icon = stage.icon;
+              const isActive = stage.id === activePipelineStage;
+              return (
+                <div 
+                  key={stage.id} 
+                  className={`pipeline-stage ${isActive ? 'active' : ''}`}
+                  onClick={() => setActivePipelineStage(stage.id)}
+                  style={{ 
+                    flex: 1, 
+                    padding: '24px 12px', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    gap: '12px',
+                    borderRight: index < stages.length - 1 ? '1px solid #eee' : 'none',
+                    backgroundColor: isActive ? '#fff' : 'transparent',
+                    cursor: 'pointer',
+                    boxShadow: isActive ? 'inset 0 2px 0 #00756a, 0 4px 12px rgba(0,0,0,0.05)' : 'none',
+                    zIndex: isActive ? 1 : 0,
+                    position: 'relative',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Icon size={24} color={isActive ? '#00756a' : '#999'} strokeWidth={1.5} />
+                  <span style={{ 
+                    fontSize: '12px', 
+                    fontWeight: isActive ? 600 : 500, 
+                    color: isActive ? '#333' : '#999',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {stage.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderSelectionScreen = () => (
     <div className="creation-mode-selection">
       <div className="selection-container">
@@ -463,16 +878,16 @@ export default function JobNewPage() {
               id="fileInput" 
               hidden 
               accept=".pdf,.doc,.docx"
-              onChange={(e) => setUploadFile(e.target.files[0])}
+              onChange={(e) => setUploadFiles(e.target.files)}
             />
             <div className="upload-icon-large">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00756a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <p className="upload-text">Click to upload or drag and drop</p>
             <p className="upload-hint">Supported formats: PDF, DOC, DOCX (Max 10MB)</p>
-            {uploadFile && (
+            {uploadFiles.length > 0 && (
               <div className="selected-file-badge">
-                {uploadFile.name}
+                {uploadFiles[0].name}
               </div>
             )}
           </div>
@@ -490,10 +905,10 @@ export default function JobNewPage() {
           <div className="btn-group-footer" style={{ marginTop: '40px' }}>
             <button 
               className="btn-save-continue"
-              disabled={!uploadFile}
-              onClick={() => addToast({ title: 'Processing', message: 'AI is extracting details from your document...', variant: 'info' })}
+              disabled={uploadFiles.length === 0 || analyzeJob.isPending}
+              onClick={handleUpload}
             >
-              Save & continue
+              {analyzeJob.isPending ? 'Uploading...' : 'Upload'}
             </button>
             <button className="btn-save-draft" onClick={() => setCreationMode(null)}>
               Back
@@ -509,9 +924,9 @@ export default function JobNewPage() {
   }
 
   return (
-    <div className="job-create-container">
+    <div className="job-create-container" style={{ maxWidth: '100%', width: '100%', padding: 0 }}>
       {/* Header section */}
-      <div className="job-create-header">
+      <div className="job-create-header" style={{ padding: '24px 40px' }}>
         <div className="job-create-header-top">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button 
@@ -555,7 +970,7 @@ export default function JobNewPage() {
           </div>
         </div>
 
-        <div className="job-create-tabs" style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div className="job-create-tabs" style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px' }}>
           {tabs.map(tab => (
             <div 
               key={tab} 
@@ -570,226 +985,21 @@ export default function JobNewPage() {
       </div>
 
       {/* Main Content section */}
-      <div className="job-create-content">
-        {creationMode === 'manual' ? (
-          <>
-            {activeTab === 'Job details' && renderJobDetails()}
-
-            {activeTab === 'Team members' && (
-              <div className="job-content-card">
-                <div className="job-content-header">
-                  <h3>Team members</h3>
-                  <HelpCircle size={16} color="#ccc" />
-                </div>
-                
-                <div className="job-content-body">
-                  <div className="member-row">
-                    <div className="member-info">
-                      <Avatar name={fullName} size="sm" />
-                      <span className="member-name">{fullName}</span>
-                      <span className="member-email">{email}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-                      <span className="member-role-text">You're an Admin for this job</span>
-                      <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#999' }}>
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: '32px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#999', textTransform: 'uppercase', marginBottom: '8px' }}>
-                      Other members
-                    </div>
-                    <p style={{ fontSize: '14px', color: '#666' }}>
-                      You can add other account members to your team or invite people to join Workable to collaborate on this job.
-                    </p>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button className="btn-invite-member">
-                        Invite a new member
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'Find candidates' && (
-              <div className="find-candidates-container">
-                {/* Option 1: Document Uploading */}
-                <div className="sourcing-option-section">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div className="option-number">Option 1</div>
-                      <h2 className="option-title" style={{ marginBottom: 0 }}>Document Uploading</h2>
-                    </div>
-                    
-                    <button 
-                      className="btn-save-continue"
-                      style={{ padding: '8px 16px', fontSize: '13px' }}
-                      disabled={!uploadFile}
-                      onClick={() => addToast({ title: 'Processing', message: 'AI is extracting details from your document...', variant: 'info' })}
-                    >
-                      Save & continue
-                    </button>
-                  </div>
-                  
-                  <div className="upload-area secondary" onClick={() => document.getElementById('candidateUpload').click()}>
-                    <input 
-                      type="file" 
-                      id="candidateUpload" 
-                      hidden 
-                      multiple
-                      accept=".pdf,.doc,.docx,.zip"
-                    />
-                    <div className="upload-icon-medium">
-                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00756a" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    </div>
-                    <p className="upload-text">Upload candidate resumes or a ZIP folder</p>
-                    <p className="upload-hint">Supported formats: PDF, DOCS, ZIP</p>
-                  </div>
-                </div>
-
-                <div className="option-divider">
-                  <span>OR</span>
-                </div>
-
-                {/* Option 2: Multi-channel Sourcing */}
-                <div className="sourcing-option-section" style={{ marginTop: '40px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px' }}>
-                    <div className="option-number">Option 2</div>
-                    <h2 className="option-title">Multi-channel Sourcing</h2>
-                  </div>
-
-                  {/* Step 1 */}
-                  <div className="sourcing-step">
-        <div className="step-marker">1</div>
-        <div className="step-content">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <h3 className="step-title" style={{ marginBottom: 0 }}>Get off to the right start</h3>
-            <span className="coming-soon-badge">Coming Soon</span>
-          </div>
-          <p className="step-subtitle">Get the most quality candidates quickly - these actions are our top performers.</p>
-          
-          <div className="sourcing-grid">
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h6"/></svg></div>
-              <h4>Premium job boards</h4>
-              <p>Use premium job boards to increase visibility and collect more candidates.</p>
-              <button className="sourcing-link">Boost visibility</button>
-            </div>
-
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg></div>
-              <h4>Referrals</h4>
-              <p>Send an email to your employees inviting them to submit referrals.</p>
-              <button className="sourcing-link">Edit Referrals settings</button>
-            </div>
-
-            <div className="sourcing-card muted">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-              <h4>Passive candidates</h4>
-              <p>Profiles matching your job in our global database.</p>
-              <button className="sourcing-link disabled">Preview candidates</button>
-            </div>
-
-            <div className="sourcing-card muted">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>
-              <h4>Resurfaced candidates</h4>
-              <p>Past candidates who match this new job.</p>
-              <button className="sourcing-link disabled">Preview candidates</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Step 2 */}
-      <div className="sourcing-step">
-        <div className="step-marker">2</div>
-        <div className="step-content">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <h3 className="step-title" style={{ marginBottom: 0 }}>More options to consider</h3>
-            <span className="coming-soon-badge">Coming Soon</span>
-          </div>
-          <p className="step-subtitle">These inbound and outbound sourcing features provide a wide range of ways to find your next hire.</p>
-          
-          <div className="sourcing-grid">
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg></div>
-              <h4>Free job boards</h4>
-              <p>Post your job to our network of free job boards to start receiving applications.</p>
-              <button className="sourcing-link">View boards</button>
-            </div>
-
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg></div>
-              <h4>Invite Recruiters</h4>
-              <p>Add external recruiters to your job and allow them to add candidates.</p>
-              <button className="sourcing-link">Invite now</button>
-            </div>
-
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
-              <h4>Share on Social Media</h4>
-              <div className="social-icons">
-                <span className="social-circle fb">f</span>
-                <span className="social-circle in">in</span>
-                <span className="social-circle tw">𝕏</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Step 3 */}
-      <div className="sourcing-step">
-        <div className="step-marker">3</div>
-        <div className="step-content">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <h3 className="step-title" style={{ marginBottom: 0 }}>Finally, a few smaller actions you can take</h3>
-            <span className="coming-soon-badge">Coming Soon</span>
-          </div>
-          <p className="step-subtitle">Actions that ensure you're receiving candidates from everywhere in your recruiting mix.</p>
-          
-          <div className="sourcing-grid">
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-              <h4>Website Connect</h4>
-              <p>Embed your jobs on your website. We provide the code and update automatically.</p>
-              <button className="sourcing-link">Connect</button>
-            </div>
-
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
-              <h4>Job Shortlink</h4>
-              <div className="sourcing-input-box">https://apply.workable.com/j/7AA...</div>
-              <button className="sourcing-link">Copy to clipboard</button>
-            </div>
-
-            <div className="sourcing-card">
-              <div className="sourcing-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
-              <h4>Job Mailbox</h4>
-              <div className="sourcing-input-box">7AA6F6E414@jobs.workablemail...</div>
-              <button className="sourcing-link">Copy to clipboard</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-        <div className="sourcing-step last">
-          <div className="step-marker">4</div>
-          <div className="step-content">
-            <h3 className="step-title">Happy recruiting! Good luck.</h3>
-          </div>
-        </div>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          renderUploadMode()
+      <div className="job-create-content" style={activeTab === 'Workflow' ? { padding: 0, maxWidth: '100%' } : {}}>
+        {activeTab === 'Job details' && (
+          creationMode === 'manual' ? renderJobDetails() : renderUploadMode()
         )}
+        {activeTab === 'Team members' && renderTeamMembers()}
+
+        {activeTab === 'Find candidates' && renderFindCandidates()}
+
+        {activeTab === 'Application form' && creationMode === 'manual' && (
+          <div className="job-content-card">
+            <div className="job-content-header"><h3>Application form</h3></div>
+            <div className="job-content-body"><p>Configure your application form here.</p></div>
+          </div>
+        )}
+        {activeTab === 'Workflow' && renderWorkflow()}
       </div>
     </div>
   );

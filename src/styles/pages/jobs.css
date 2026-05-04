@@ -207,6 +207,13 @@
   margin: 0 auto;
 }
 
+.job-content-card.full-fit {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  border-radius: 0;
+}
+
 .job-content-header {
   padding: 24px;
   border-bottom: 1px solid #f0f0f0;

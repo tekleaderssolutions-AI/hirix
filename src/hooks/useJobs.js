@@ -39,3 +39,9 @@ export function useUpdateJob(id) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 }
+
+export function useAnalyzeJob() {
+  return useMutation({
+    mutationFn: (formData) => api.post('/jobs/analyze', formData).then((r) => r.data),
+  });
+}
