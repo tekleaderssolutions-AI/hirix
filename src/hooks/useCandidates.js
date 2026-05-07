@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 
-export function useCandidates(filters = {}) {
+export function useCandidates(filters = {}, options = {}) {
   return useQuery({
     queryKey: ['candidates', filters],
     queryFn: () => api.get('/candidates', { params: filters }).then((r) => r.data),
+    ...options
   });
 }
 
@@ -24,6 +25,19 @@ export function useUploadCandidates() {
       const url = jobCode ? `/candidates/upload?job_code=${jobCode}` : '/candidates/upload';
       return api.post(url, formData).then((r) => r.data);
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    },
+  });
+}
+
+export function useFetchAndAlign() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobId, topK, rerankThreshold = 60 }) => 
+      api.get(`/matching/fetch-and-align/${jobId}`, { 
+        params: { top_k: topK, rerank_threshold: rerankThreshold } 
+      }).then(r => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
     },

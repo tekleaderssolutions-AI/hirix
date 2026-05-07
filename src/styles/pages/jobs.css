@@ -871,4 +871,162 @@
   margin-bottom: 12px;
 }
 
+/* ── Sourced Stage Content Styles ── */
+.sourced-stage-content {
+  padding: 32px 40px;
+  background: white;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
 
+.sourced-controls-grid {
+  display: flex;
+  align-items: flex-end;
+  gap: 40px;
+  flex-wrap: wrap;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sourced-control-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sourced-control-row label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sourced-select-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f8f8f7;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  color: #333;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sourced-count-badge {
+  background: #00756a;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sourced-number-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: #f8f8f7;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  padding: 2px;
+}
+
+.sourced-number-input {
+  width: 60px;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+  padding: 8px 0;
+}
+
+.sourced-number-input:focus {
+  outline: none;
+}
+
+.sourced-number-btn {
+  background: white;
+  border: 1px solid #eee;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.sourced-number-btn:hover {
+  background: #eee;
+  color: #1a1a1a;
+}
+
+.btn-scan-ai {
+  background: linear-gradient(135deg, #6366f1 0%, #00756a 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  transition: all 0.3s ease;
+}
+
+.btn-scan-ai:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+}
+
+.btn-scan-ai svg {
+  animation: sparkle 2s infinite;
+}
+
+@keyframes sparkle {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.sourced-candidate-list-container {
+  flex: 1;
+  border: 2px dashed #eee;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: #fafafa;
+}
+
+.btn-send-mail {
+  align-self: flex-start;
+  background: #1a1a1a;
+  color: white;
+  border: none;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.btn-send-mail:hover {
+  background: #333;
+}

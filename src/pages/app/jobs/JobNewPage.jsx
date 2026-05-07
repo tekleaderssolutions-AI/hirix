@@ -25,7 +25,8 @@ import {
   EDUCATION_LEVELS 
 } from '@/lib/constants';
 import { useCreateJob, useNextJobCode, useAnalyzeJob } from '@/hooks/useJobs';
-import { useUploadCandidates } from '@/hooks/useCandidates';
+import { useCandidates, useUploadCandidates, useFetchAndAlign } from '@/hooks/useCandidates';
+import CandidateGrid from '@/components/candidates/CandidateGrid';
 import useUiStore from '@/store/uiStore';
 import { useNavigate } from 'react-router-dom';
 
@@ -39,7 +40,10 @@ export default function JobNewPage() {
   const { data: nextCode } = useNextJobCode();
   const analyzeJob = useAnalyzeJob();
   const uploadCandidates = useUploadCandidates();
+  const fetchAndAlign = useFetchAndAlign();
   const addToast = useUiStore(s => s.addToast);
+  const [selectedTop, setSelectedTop] = useState(3);
+  const [scannedCandidates, setScannedCandidates] = useState([]);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -61,6 +65,37 @@ export default function JobNewPage() {
     salary_currency: 'INR',
     status: 'draft'
   });
+
+  const [uploadProgress, setUploadProgress] = useState({
+    isUploading: false,
+    totalFiles: 0,
+    initialCount: 0
+  });
+
+  // Fetch candidates to get the count and support polling
+  const { data: candidates, refetch: refetchCandidates } = useCandidates(
+    formData?.id ? { job_id: formData.id } : null,
+    { 
+      refetchInterval: uploadProgress.isUploading ? 3000 : false,
+      refetchOnWindowFocus: true
+    }
+  );
+  const sourcedCount = candidates?.length || 0;
+
+  // Stop polling when we reach the expected count
+  React.useEffect(() => {
+    if (uploadProgress.isUploading) {
+      const processed = sourcedCount - uploadProgress.initialCount;
+      if (processed >= uploadProgress.totalFiles) {
+        setUploadProgress(prev => ({ ...prev, isUploading: false }));
+        addToast({
+          title: 'Upload Complete',
+          message: 'All candidates have been processed successfully!',
+          type: 'success'
+        });
+      }
+    }
+  }, [sourcedCount, uploadProgress.isUploading, uploadProgress.totalFiles, uploadProgress.initialCount, addToast]);
 
   const [uploadFiles, setUploadFiles] = useState([]);
 
@@ -101,7 +136,7 @@ export default function JobNewPage() {
         job_function: formData.job_function || 'Engineering',
         employment_type: formData.employment_type || 'Full-time',
         experience_level: formData.experience_level || 'Entry Level',
-        education_level: formData.education_level || "Bachelor's Degree",
+        education_level: "Bachelor's Degree",
         keywords: formData.keywords ? formData.keywords.split(',').map(k => k.trim()) : [],
         salary_min: Number(formData.salary_min) || 0,
         salary_max: Number(formData.salary_max) || 0,
@@ -225,24 +260,34 @@ export default function JobNewPage() {
 
       console.log('Sending upload for job_code:', jobCode);
 
-      addToast({ 
-        title: 'Uploading', 
-        message: `Uploading candidate...`, 
-        type: 'info' 
-      });
-
-      await uploadCandidates.mutateAsync({ 
+      const response = await uploadCandidates.mutateAsync({ 
         formData: formDataObj, 
         jobCode: jobCode 
       });
       
-      addToast({
-        title: 'Success',
-        message: 'Candidates uploaded successfully!',
-        type: 'success'
+      const totalFiles = response?.total_files || 1;
+
+      // Capture the count *after* the successful upload trigger to be safe
+      // but before we start polling
+      const currentCount = candidates?.length || 0;
+
+      setUploadProgress({
+        isUploading: true,
+        totalFiles: totalFiles,
+        initialCount: currentCount
       });
 
+      // Jumpstart the polling immediately
+      refetchCandidates();
+
+      addToast({
+        title: 'Upload Started',
+        message: `Processing ${totalFiles} resumes in the background...`,
+        type: 'info'
+      });
       setUploadFiles([]);
+      setActiveTab('Workflow');
+      setActivePipelineStage('sourced');
     } catch (error) {
       console.error('Candidate upload failed:', error.response?.data || error.message);
       
@@ -257,6 +302,63 @@ export default function JobNewPage() {
       addToast({
         title: 'Upload Error',
         message: message,
+        type: 'error'
+      });
+    }
+  };
+
+  const handleScanWithAI = async () => {
+    if (!formData.id) {
+      addToast({
+        title: 'Save Job First',
+        message: 'Please save the job before scanning candidates.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    try {
+      addToast({
+        title: 'Scanning Candidates',
+        message: 'AI is fetching and aligning candidates...',
+        type: 'info'
+      });
+
+      const results = await fetchAndAlign.mutateAsync({
+        jobId: formData.id,
+        topK: selectedTop,
+        rerankThreshold: 60
+      });
+
+      // Map the backend response to the format expected by CandidateGrid
+      // The backend returns an array of matching candidates or a 'matches' array
+      const matches = Array.isArray(results) ? results : (results?.matches || []);
+      
+      const formattedCandidates = matches.map(m => {
+        // Handle different backend response structures gracefully
+        const raw = m.raw_text ? m : (m.candidate || {});
+        return {
+          id: raw.id || m.resume_id || Math.random().toString(),
+          name: raw.first_name ? `${raw.first_name} ${raw.last_name || ''}`.trim() : 'Unknown Candidate',
+          email: raw.email || '',
+          role: raw.current_role || 'Applicant',
+          stage: 'Sourced',
+          aiScore: m.initial_score ? Math.round(m.initial_score) : (m.best_similarity ? Math.round(m.best_similarity * 100) : (m.score || 85)),
+          strategyPlan: m.strategy_plan || null
+        };
+      });
+
+      setScannedCandidates(formattedCandidates);
+
+      addToast({
+        title: 'Scan Complete',
+        message: `Successfully scanned and aligned ${formattedCandidates.length} candidates.`,
+        type: 'success'
+      });
+    } catch (error) {
+      addToast({
+        title: 'Scan Failed',
+        message: error.response?.data?.detail || error.message || 'Failed to scan candidates',
         type: 'error'
       });
     }
@@ -615,24 +717,24 @@ export default function JobNewPage() {
         
         <div style={{ maxWidth: '600px' }}>
           <div className="upload-area secondary" style={{ padding: '32px 24px' }} onClick={() => document.getElementById('candidateUpload').click()}>
-          <input 
-            type="file" 
-            id="candidateUpload" 
-            hidden 
-            multiple
-            accept=".pdf,.doc,.docx,.zip"
-            onChange={(e) => setUploadFiles(e.target.files)}
-          />
-          <div className="upload-icon-medium" style={{ marginBottom: '12px' }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00756a" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <input 
+              type="file" 
+              id="candidateUpload" 
+              hidden 
+              multiple
+              accept=".pdf,.doc,.docx,.zip"
+              onChange={(e) => setUploadFiles(e.target.files)}
+            />
+            <div className="upload-icon-medium" style={{ marginBottom: '12px' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00756a" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <p className="upload-text" style={{ fontSize: '14px' }}>Upload candidate resumes or a ZIP folder</p>
+            <p className="upload-hint" style={{ fontSize: '12px' }}>Supported formats: PDF, DOCS, ZIP</p>
           </div>
-          <p className="upload-text" style={{ fontSize: '14px' }}>Upload candidate resumes or a ZIP folder</p>
-          <p className="upload-hint" style={{ fontSize: '12px' }}>Supported formats: PDF, DOCS, ZIP</p>
         </div>
       </div>
-    </div>
 
-    <div style={{ textAlign: 'center', margin: '24px 0', color: '#999', fontSize: '12px', fontWeight: 600 }}>OR</div>
+      <div style={{ textAlign: 'center', margin: '24px 0', color: '#999', fontSize: '12px', fontWeight: 600 }}>OR</div>
 
       {/* Option 2: Multi-channel Sourcing */}
       <div className="sourcing-option-section">
@@ -831,6 +933,102 @@ export default function JobNewPage() {
               );
             })}
           </div>
+        </div>
+
+        {/* Stage Content */}
+        <div className="stage-content-container">
+          {activePipelineStage === 'sourced' && (
+            <div className="sourced-stage-content">
+              {/* Top Controls */}
+              <div className="sourced-controls-grid">
+                <div className="sourced-control-row" style={{ alignItems: 'flex-start' }}>
+                  <label style={{ marginTop: '10px' }}>Source</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                    <div className="sourced-select-display">
+                      <CloudUpload size={18} color="#00756a" />
+                      <span>Document uploading</span>
+                      <span className="sourced-count-badge">{sourcedCount}</span>
+                    </div>
+                    {uploadProgress.isUploading && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '4px' }}>
+                        <div style={{ width: '100%', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
+                          <div style={{ 
+                            width: `${Math.min(100, Math.round(((Math.max(0, sourcedCount - uploadProgress.initialCount)) / uploadProgress.totalFiles) * 100))}%`, 
+                            backgroundColor: '#00756a', 
+                            height: '100%', 
+                            transition: 'width 0.3s ease' 
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#666', textAlign: 'right' }}>
+                          Processing: {Math.max(0, sourcedCount - uploadProgress.initialCount)} of {uploadProgress.totalFiles}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="sourced-control-row">
+                  <label>Selected Top</label>
+                  <div className="sourced-number-input-wrapper">
+                    <button 
+                      className="sourced-number-btn"
+                      onClick={() => setSelectedTop(Math.max(1, selectedTop - 1))}
+                    >
+                      <Plus size={16} style={{ transform: 'rotate(45deg)' }} />
+                    </button>
+                    <input 
+                      type="number" 
+                      className="sourced-number-input"
+                      value={selectedTop}
+                      onChange={(e) => setSelectedTop(parseInt(e.target.value) || 1)}
+                    />
+                    <button 
+                      className="sourced-number-btn"
+                      onClick={() => setSelectedTop(selectedTop + 1)}
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <button 
+                  className="btn-scan-ai"
+                  onClick={handleScanWithAI}
+                  disabled={fetchAndAlign.isPending}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                  {fetchAndAlign.isPending ? 'Scanning...' : 'Scan with AI'}
+                </button>
+              </div>
+
+              {/* Candidate List Container */}
+              <div className="sourced-candidate-list-container" style={{ padding: scannedCandidates.length > 0 ? '0' : '40px' }}>
+                {scannedCandidates.length > 0 ? (
+                  <CandidateGrid candidates={scannedCandidates} />
+                ) : (
+                  <div style={{ textAlign: 'center', color: '#999' }}>
+                    <div style={{ marginBottom: '16px', opacity: 0.5 }}>
+                      <User size={48} strokeWidth={1} />
+                    </div>
+                    <p style={{ fontSize: '15px', fontWeight: 600, color: '#333', marginBottom: '8px' }}>Candidates will appear here after scanning</p>
+                    <p style={{ fontSize: '13px' }}>Click "Scan with AI" to begin processing uploaded documents</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Send Mail Footer */}
+              <button className="btn-send-mail">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                Send Mail
+              </button>
+            </div>
+          )}
+
+          {activePipelineStage !== 'sourced' && (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#999' }}>
+              <p>Content for {activePipelineStage} stage will appear here.</p>
+            </div>
+          )}
         </div>
       </div>
     );
